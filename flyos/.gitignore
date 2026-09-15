@@ -1,0 +1,12 @@
+/build/
+/build-*/
+/flyos-screen.ppm
+/flyos-screen.png
+/flyos-state.a
+/flyos-state.b
+/flyos-state.a.tmp
+/flyos-state.b.tmp
+/flyos_test_state.a
+/flyos_test_state.b
+/flyos_test_state.a.tmp
+/flyos_test_state.b.tmp

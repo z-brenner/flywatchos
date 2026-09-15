@@ -1,0 +1,44 @@
+# Private watch data, analysis custody, and proprietary/update payloads
+/artifacts/
+*.fit
+*.FIT
+*.gcd
+*.GCD
+*.rgn
+*.img
+GarminDevice.xml
+
+# Reverse-engineering databases and local toolchains
+*.gpr
+*.rep/
+/tools/arm-toolchain/
+/tools/ghidra/
+
+# Generated outputs
+**/build/
+**/build-*/
+**/__pycache__/
+*.py[cod]
+*.o
+*.obj
+*.a
+*.elf
+*.exe
+*.su
+*.bin
+*.tmp
+*.gbf
+
+# Local state and credentials
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

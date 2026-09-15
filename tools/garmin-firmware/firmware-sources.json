@@ -1,0 +1,90 @@
+[
+  {
+    "filename": "Forerunner245_310.gcd",
+    "component": "system",
+    "variant": "Forerunner 245 non-Music",
+    "part_number": "006-B3076-00",
+    "version": "3.10",
+    "url": "https://download.garmin.com/software/Forerunner245_310.gcd",
+    "expected_size": 4245103,
+    "expected_md5": null,
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245M_310.gcd",
+    "component": "system",
+    "variant": "Forerunner 245 Music",
+    "part_number": "006-B3077-00",
+    "version": "3.10",
+    "url": "https://download.garmin.com/software/Forerunner245M_310.gcd",
+    "expected_size": 6141667,
+    "expected_md5": null,
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245_SensorHubSoftware_250.gcd",
+    "component": "sensor hub",
+    "variant": "Forerunner 245 family",
+    "part_number": "006-B3078-00",
+    "version": "2.50",
+    "url": "https://download.garmin.com/software/Forerunner245_SensorHubSoftware_250.gcd",
+    "expected_size": 302439,
+    "expected_md5": null,
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245_ANT_BLE_360.gcd",
+    "component": "ANT/BLE",
+    "variant": "Forerunner 245 family",
+    "part_number": "006-B3204-00",
+    "version": "3.60",
+    "url": "https://download.garmin.com/software/Forerunner245_ANT_BLE_360.gcd",
+    "expected_size": 149210,
+    "expected_md5": null,
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245_1370_GUPDATE.GCD",
+    "component": "system",
+    "variant": "Forerunner 245 non-Music",
+    "part_number": "006-B3076-00",
+    "version": "13.70",
+    "url": "https://download.garmin.com/gsup/006-B3076-00/13.70/full/rel/ad706ef8-205a-4763-b0ce-21e12311b29e/GUPDATE.GCD",
+    "expected_size": 5120675,
+    "expected_md5": "f1b9e00830dccd28660691f9cf299bb7",
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245_GPS_550_006B310708.GCD",
+    "component": "GPS/CPE",
+    "variant": "Forerunner 245 family",
+    "part_number": "006-B3107-08",
+    "version": "5.50",
+    "url": "https://download.garmin.com/gsup/006-B3107-08/5.50/full/rel/1531e165-bf11-44fb-8fec-dde1f37805a6/006B310708.GCD",
+    "expected_size": 768510,
+    "expected_md5": "b69fb4432f97d8aacfa1cd6bf4788958",
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245_SensorHub_1804_GUP3078.GCD",
+    "component": "sensor hub",
+    "variant": "Forerunner 245 non-Music",
+    "part_number": "006-B3078-00",
+    "version": "18.04",
+    "url": "https://download.garmin.com/gsup/006-B3078-00/18.04/full/rel/5337303e-fce8-402c-a99f-fd162842984c/GUP3078.GCD",
+    "expected_size": 364347,
+    "expected_md5": "55b51ab0b49a2856e19f1823592041c7",
+    "matches_connected_backup": false
+  },
+  {
+    "filename": "Forerunner245_ANT_BLE_615_GUP3204.GCD",
+    "component": "ANT/BLE",
+    "variant": "Forerunner 245 non-Music",
+    "part_number": "006-B3204-00",
+    "version": "6.15",
+    "url": "https://download.garmin.com/gsup/006-B3204-00/6.15/full/rel/66405293-806c-4bec-aa76-48a4f003f144/GUP3204.GCD",
+    "expected_size": 174457,
+    "expected_md5": "7606c721c8841feceae35521f83f1bc5",
+    "matches_connected_backup": true
+  }
+]
