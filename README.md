@@ -1,41 +1,153 @@
-# FlyWatchOS
+<div align="center">
 
-Reverse engineering and experimental firmware work for the Garmin Forerunner 245
-(non-Music, HWID 3076). The current live result is a GarminOS-resident overlay
-with a deterministic 64-neuron fruit-fly-inspired network and a full-screen
-scientific display.
+# FLYWATCH / SPECIMEN 64
 
-The project has **not** demonstrated a replacement bootloader, secure-boot
-bypass, or standalone custom operating system. The present code executes inside
-the official Garmin 13.70 application image through a researched overlay hook.
-Recovery still depends on GarminOS booting and exposing USB mass storage, so
-standalone firmware feasibility remains **YELLOW**.
+```text
+                 \   |   /
+              .---\--+--/---.
+           .-'    o--o--o     '-.
+         .'   o--o  / \  o--o    '.
+        /   o/  o--o---o--o  \o    \
+       ;   / o--o  FLY  o--o \     ;
+       |  o--o  NEURAL FIELD  o--o  |
+       ;   \ o--o  64  o--o  /     ;
+        \   o\  o--o--o  /o       /
+         '.   o--o  |  o--o      .'
+           '-.____\_|_/_____.-'
+                  /   \
 
-## Repository map
+           FORERUNNER 245 // ALIVE
+```
 
-- `flyos/` — host model, display renderer, persistence design, and FR245 target overlays
-- `tools/garmin-firmware/` — GCD inspection, validation, emulation, allocation, and packaging tools
-- `tools/live-proof/` — guarded live staging tool; write mode requires deliberate enablement
-- `tools/device-backup/` — read-only backup helper
-- `docs/` — device inventory, hardware research, firmware format, boot-chain, recovery, and live experiment reports
+**A fruit-fly-inspired neural organism living inside a Garmin Forerunner 245.**
 
-Private device backups, activity/GPS data, identifiers, official Garmin firmware,
-modified GCD packages, analysis-custody artifacts, Ghidra projects, and locally
-built binaries are intentionally excluded from Git.
+`64 NEURONS` · `FIXED-POINT` · `PERSISTENT STATE` · `240 × 240` · `VERY EXPERIMENTAL`
 
-## Current interface
+</div>
 
-The installed N64 experiment maps 64 simulated neurons directly to 64 rendered
-cells. It uses a limited RGB222 palette and samples the five watch buttons, RTC,
-cached battery percentage, and a narrow USB storage-state observation. Heart-rate,
-motion, ambient-light, and charging telemetry are not yet bound to safe runtime
-sources. Garmin screens can still appear because system/update/charging UI is
-currently passed through by design.
+---
 
-See [the session report](docs/session-report.md), [N64 design](docs/superpowers/specs/2026-09-14-flyos-neural-specimen-n64-design.md),
-and [recovery analysis](docs/recovery.md) for the evidence and limits.
+## What is this?
 
-## Host build
+FlyWatch is an attempt to turn a Garmin Forerunner 245 into a strange little
+scientific instrument—part watch face, part neural observatory, part persistent
+artificial organism.
+
+The watch currently runs **Specimen 64**, a deterministic 64-neuron network with
+sparse weighted connections. Every simulated neuron maps directly to a cell in
+the display. The colors and pulses are state, not decorative random noise.
+
+This is firmware reverse engineering, not a Connect IQ app.
+
+> [!IMPORTANT]
+> The current result is a **GarminOS-resident executable overlay**. It is not yet
+> a replacement bootloader or standalone operating system. Arbitrary boot has not
+> been demonstrated, and recovery still depends on GarminOS and USB continuing to work.
+
+## Specimen status
+
+| Channel | Reading |
+|---|---|
+| Host organism | Garmin Forerunner 245, non-Music, HWID 3076 |
+| Installed experiment | Synthetic 13.74 wrapper over official 13.70 application |
+| Neural population | 64 deterministic fixed-point neurons |
+| Neuron-to-screen mapping | 1 simulated neuron → 1 rendered cell |
+| Live inputs | Five buttons, RTC, cached battery percentage, narrow USB state |
+| Unbound inputs | Heart rate, motion, ambient light, charging telemetry |
+| Persistence | Designed and host-tested; live identity persistence is still limited |
+| Boot independence | Not demonstrated |
+| Feasibility verdict | **YELLOW — alive inside GarminOS, not free of it** |
+
+## The current instrument
+
+```text
+┌──────────────────────────────┐
+│ 14:52              B 73%     │
+│                              │
+│       /\  SPECIMEN  /\       │
+│      /  \    64    /  \      │
+│     │ ·─●─·──●──·─● │        │
+│     │ ●╲·╱●  ·  ●╲· │        │
+│     │ ·─●──●──●─·   │        │
+│     │ ●╱·╲●  ·  ●╱· │        │
+│      \__NEURAL FIELD_/       │
+│                              │
+│ STATE  QUIET / RESPONSIVE    │
+│ AGE    03:14:22              │
+└──────────────────────────────┘
+```
+
+The live display uses the watch's RGB222 framebuffer palette:
+
+- **Green** — excitatory activity
+- **Magenta** — inhibitory activity
+- **Amber** — saturated activity
+- **Gray** — anatomical scaffold
+- **Black** — background
+
+The interface deliberately looks like a lab readout rather than a cartoon
+smartwatch. The display renderer and network model are reproducible on the host
+before they are compiled into the constrained target overlay.
+
+## Controls under investigation
+
+| Physical control | Instrument label | Intended neural effect | Current limitation |
+|---|---|---|---|
+| Top-left | `LIGHT / LUX` | Environmental stimulus channel | Ambient-light telemetry is not yet bound |
+| Middle-left | `UP / WAKE` | Raise arousal | Sampled while the overlay owns the view |
+| Bottom-left | `DOWN / CALM` | Lower arousal | Sampled while the overlay owns the view |
+| Top-right | `START / PULSE` | Inject a neural pulse | Garmin also uses START for system/update confirmation |
+| Bottom-right | `BACK / SYS` | System escape | Intentionally passes to GarminOS immediately |
+
+Some Garmin screens can still replace the neural view. That behavior is real and
+currently undesirable: the overlay observes a bounded Garmin view state instead
+of owning the complete UI stack. Fixing view ownership and making every button's
+neural effect obvious is the next interface milestone.
+
+## Signal path
+
+```mermaid
+flowchart LR
+    BTN[Five GPIO buttons] --> ADAPT[Bounded input adapters]
+    RTC[RTC / time] --> ADAPT
+    BAT[Cached battery] --> ADAPT
+    USB[Narrow USB state] --> ADAPT
+    ADAPT --> NET[Specimen 64<br/>Q5.10 neural network]
+    NET --> STATE[Persistent identity state]
+    NET --> CELLS[64 direct neuron cells]
+    CELLS --> RENDER[RGB222 scientific renderer]
+    RENDER --> FB[Garmin framebuffer path]
+    FB --> LCD[240 × 240 display]
+```
+
+No floating point is required in the target neural step. The model is small,
+sparse, deterministic, and designed to evolve continuously on watch-scale power
+and memory budgets.
+
+## What lives in this repository
+
+```text
+flyos/
+├── fly/          neural models and persistence
+├── display/      framebuffer and neural renderers
+├── input/        host input adapters
+├── kernel/       host runtime
+├── target/       Cortex-M4 and FR245 overlay targets
+└── tests/        deterministic model and renderer tests
+
+tools/
+├── garmin-firmware/   GCD inspection, emulation, validation, and packaging
+├── device-backup/     read-only backup tooling
+└── live-proof/        guarded update staging
+
+docs/                  hardware, firmware, boot, recovery, and experiment evidence
+```
+
+Private watch files, activity and GPS history, unique identifiers, official Garmin
+firmware, modified update images, Ghidra databases, and generated target binaries
+are intentionally excluded from Git.
+
+## Build the organism on a host
 
 ```powershell
 cmake -S flyos -B flyos/build
@@ -43,10 +155,45 @@ cmake --build flyos/build
 ctest --test-dir flyos/build --output-on-failure
 ```
 
-The target builds require a local ARM toolchain and byte-pinned firmware evidence
-that is deliberately absent from this public repository. Do not stage an update
-image without reviewing the exact image, flash ranges, brick risk, and recovery
-path for the connected device.
+The host suite exercises the neural model, persistence format, display renderer,
+color roles, preview export, and deterministic behavior. Target builds require a
+local ARM toolchain plus byte-pinned firmware evidence that is not distributed here.
+
+## Evolution log
+
+- [x] Inventory the FR245 USB and firmware surface
+- [x] Preserve and hash all locally accessible evidence
+- [x] Parse Garmin GCD update containers reproducibly
+- [x] Demonstrate visible modified resources on the live watch
+- [x] Execute bounded custom ARM code inside the Garmin application
+- [x] Render a full-screen interactive neural display
+- [x] Expand from 32 to 64 directly mapped neurons
+- [ ] Keep the neural instrument in control of the home view
+- [ ] Make every button effect visible and legible
+- [ ] Bind safe heart-rate, motion, and charging observations
+- [ ] Strengthen persistent identity across restarts
+- [ ] Establish a dependable nonboot recovery path
+- [ ] Demonstrate standalone custom boot—or document why it is impractical
+
+## Evidence before mythology
+
+This project does not claim secure-boot bypass, arbitrary firmware execution, or
+standalone FlyOS without evidence. The current boundary is documented in the
+[session report](docs/session-report.md), [boot-chain analysis](docs/boot-chain.md),
+[N64 design](docs/superpowers/specs/2026-09-14-flyos-neural-specimen-n64-design.md),
+and [recovery analysis](docs/recovery.md).
+
+Firmware experiments can permanently brick the watch. Review the exact image,
+write ranges, recovery assumptions, and hashes before staging anything to hardware.
+The guarded staging tool defaults to a dry run and does not include firmware images.
+
+---
+
+<div align="center">
+
+`FLY LIVES // OBSERVE CAREFULLY`
 
 Garmin and Forerunner are trademarks of Garmin Ltd. This project is unaffiliated
 with and unsupported by Garmin.
+
+</div>
