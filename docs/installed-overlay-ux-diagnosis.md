@@ -26,19 +26,23 @@ external-XIP bulk writer has an unresolved pointer range. The completed
 classifier solves only the view-decision part of this problem. See
 `docs/atlas-shell-static-followup.md`.
 
-## The charging label is a cached mass-storage state
+## The stale charging image is not drawn by the FlyOS renderer
 
 The display hook samples byte `0x1FFC6F25` and passes `true` to `n64_render`
-when it equals 3 or 4. Static USB analysis identifies this byte as a narrow
-USB mass-storage state, not a general power/charging measurement. A cable can
-provide power without entering that state. On disconnect, state 3 can wait
+when it equals 3 or 4, but the exact installed renderer explicitly discards
+that argument and has no charging graphic. On a stable HOME call it clears all
+57,600 framebuffer bytes before drawing the FlyOS face. Therefore the user's
+stale charging image cannot be attributed to a FlyOS-drawn charging label.
+
+Static USB analysis identifies the cache byte as a narrow mass-storage state,
+not a general power/charging measurement. On disconnect, state 3 can wait
 behind an external readiness guard before testing detach; state 4 eventually
-reaches teardown in one local path. Even if the cache clears, teardown does
-not directly flush the display. Native UI lifecycle can take a no-render path
-that skips the FlyOS hook at `0x9A20`. Thus an already drawn USB/charging label
-can remain on the physical panel until a later frame. The user's stale-label
-report is consistent with either a stale cache or a missed redraw; current
-evidence cannot distinguish them.
+reaches teardown in one local path. Teardown does not directly flush the
+display. Native UI lifecycle can take a no-render path that skips the FlyOS
+hook at `0x9A20`. A previously drawn native charging screen could therefore
+remain visible without a later display transfer. A charging modal could also
+remain first-visible. Current evidence cannot distinguish those paths or
+establish the exact live cause.
 
 ## Current host observation
 

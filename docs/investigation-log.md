@@ -1094,3 +1094,6 @@
   to distinguish quarantined 13.77/13.79 official-code wrappers from a true
   nonboot restore. Recorded the source-backed button/USB failure diagnosis in
   `docs/installed-overlay-ux-diagnosis.md`.
+- Corrected the UX diagnosis after checking the exact linked renderer source:
+  `n64_render` discards `usb_ms` and draws no charging label. The stale screen
+  report instead remains an unresolved native-view/display-lifecycle issue.
