@@ -10,6 +10,7 @@ import ghidra.program.model.listing.*;
 import ghidra.program.model.pcode.*;
 import ghidra.program.model.symbol.Reference;
 import com.google.gson.GsonBuilder;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
@@ -51,6 +52,9 @@ public class UsbDetachReport extends GhidraScript {
     @Override public void run() throws Exception {
         String[] args = getScriptArgs();
         if (args.length != 2) throw new IllegalArgumentException("<private-json> <private-decompilation>");
+        Path jsonPath = Paths.get(args[0]).toAbsolutePath().normalize();
+        Path textPath = Paths.get(args[1]).toAbsolutePath().normalize();
+        checkOutputs(jsonPath, textPath);
         if (!currentProgram.getName().equals("stream_01_fw_all_bin.bin"))
             throw new IllegalArgumentException("wrong program");
         Map<String, Object> report = row("schema", "flyos.fr245.usb-ghidra-inventory.v1",
@@ -147,13 +151,25 @@ public class UsbDetachReport extends GhidraScript {
                 "end_inclusive", block.getMaxAddress().getOffset(), "destinations", destinations));
         }
         report.put("state_machine_blocks", blocks);
-        Path jsonPath = Paths.get(args[0]);
-        Files.createDirectories(jsonPath.toAbsolutePath().getParent());
         String json = new GsonBuilder().setPrettyPrinting().serializeNulls().create().toJson(report) + "\n";
-        Files.writeString(jsonPath, json, StandardCharsets.UTF_8);
-        Files.writeString(Paths.get(args[1]), privateText, StandardCharsets.UTF_8);
+        checkOutputs(jsonPath, textPath);
+        Files.createDirectories(jsonPath.getParent());
+        Files.createDirectories(textPath.getParent());
+        // Reserve both names before writing either; CREATE_NEW prevents race-time truncation.
+        try (OutputStream jsonOut = Files.newOutputStream(jsonPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+             OutputStream textOut = Files.newOutputStream(textPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            jsonOut.write(json.getBytes(StandardCharsets.UTF_8));
+            textOut.write(privateText.toString().getBytes(StandardCharsets.UTF_8));
+        }
         println("USB_DETACH_REPORT_COMPLETE json_sha256=" + digest(json.getBytes(StandardCharsets.UTF_8)) +
             " functions=" + functions.size() + " blocks=" + blocks.size() +
             " computed_access_coverage_complete=false");
+    }
+
+    private void checkOutputs(Path jsonPath, Path textPath) throws Exception {
+        if (jsonPath.equals(textPath) ||
+            Files.exists(jsonPath, LinkOption.NOFOLLOW_LINKS) ||
+            Files.exists(textPath, LinkOption.NOFOLLOW_LINKS))
+            throw new IllegalArgumentException("output collision: JSON and decompilation must both be new paths");
     }
 }

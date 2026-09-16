@@ -1,4 +1,7 @@
 import sys
+import hashlib
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,11 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools" / "garmin-firmware"))
 import atlas_shell_feasibility as feasibility
+EVIDENCE_DIR = Path(os.environ.get("FLYOS_ATLAS_EVIDENCE_DIR", ROOT / "artifacts/firmware/analysis"))
 
 
 class FeasibilityTests(unittest.TestCase):
     def test_pinned_evidence_blocks_every_unproved_gate(self):
-        report = feasibility.evaluate_feasibility(ROOT)
+        report = feasibility.evaluate_feasibility(ROOT, evidence_dir=EVIDENCE_DIR)
         self.assertEqual([
             "five_key_halfwords", "tri_state_view_classifier", "observed_update_prompt_non_home",
             "usb_3_and_4_detach_convergence", "post_unlock_hook_site", "bounded_retry_context",
@@ -63,6 +67,50 @@ class FeasibilityTests(unittest.TestCase):
         row = {"name": "all", "section": "primary", "start": 0x1F6000, "upper_bound": 1023}
         self.assertTrue(feasibility.projected_fit([row], {"all"}))
         self.assertFalse(feasibility.projected_fit([dict(row, upper_bound=True)], {"all"}))
+
+    def test_composed_cli_preflights_all_reports_and_receipt(self):
+        names = ("report.json", "fr245-1370-key-workspace.json", "fr245-1370-usb-detach.json", "report.json.sha256")
+        for collision in names:
+            with self.subTest(collision=collision), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory)
+                sentinel = folder / collision
+                sentinel.write_bytes(b"original composed evidence\x00\xff")
+                result = subprocess.run([sys.executable, "-B", str(ROOT / "tools/garmin-firmware/atlas_shell_feasibility.py"),
+                    "--root", directory, "--write-private-report", str(folder / "report.json")],
+                    capture_output=True, text=True)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn("output collision", result.stderr.lower())
+                self.assertEqual(b"original composed evidence\x00\xff", sentinel.read_bytes())
+                self.assertEqual([collision], [path.name for path in folder.iterdir()])
+
+    def test_fresh_composed_reports_have_complete_checksum_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            result = subprocess.run([sys.executable, "-B", str(ROOT / "tools/garmin-firmware/atlas_shell_feasibility.py"),
+                "--root", directory, "--write-private-report", str(folder / "report.json")],
+                capture_output=True, text=True)
+            self.assertEqual(1, result.returncode, result.stderr)
+            lines = (folder / "report.json.sha256").read_text().splitlines()
+            self.assertEqual(3, len(lines))
+            for line in lines:
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((folder / name).read_bytes()).hexdigest(), digest)
+
+    def test_run_directory_rejects_each_existing_evidence_output(self):
+        names = ("fr245-1370-usb-detach-ghidra.json", "fr245-1370-usb-detach-decompilation.txt",
+                 "fr245-1370-usb-detach-ghidra.log", "SHA256SUMS", "headless.log", "script.log")
+        for name in names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory) / "explicit-run"
+                folder.mkdir()
+                sentinel = folder / name
+                sentinel.write_bytes(b"original run evidence\x00\xff")
+                result = subprocess.run([sys.executable, "-B", str(ROOT / "tools/garmin-firmware/atlas_shell_feasibility.py"),
+                    "--root", directory, "--run-directory", str(folder)], capture_output=True, text=True)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn("output collision", result.stderr.lower())
+                self.assertEqual(b"original run evidence\x00\xff", sentinel.read_bytes())
+                self.assertEqual([name], [path.name for path in folder.iterdir()])
 
 
 if __name__ == "__main__":

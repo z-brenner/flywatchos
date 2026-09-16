@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import struct
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -176,9 +178,49 @@ def audit_key_workspace(root: Path) -> dict[str, Any]:
     return report
 
 
+def preflight_outputs(paths: list[Path]) -> None:
+    """Check the complete set before opening anything, including aliases."""
+    resolved = [os.path.normcase(str(path.resolve())) for path in paths]
+    if len(set(resolved)) != len(resolved):
+        raise FileExistsError("output collision: duplicate or aliased output paths")
+    for path in paths:
+        if os.path.lexists(path):
+            raise FileExistsError(f"output collision: {path}")
+
+
+def write_new_outputs(outputs: list[tuple[Path, bytes]]) -> None:
+    """Reserve every file exclusively before writing; never truncate a file.
+
+    A race or I/O failure can leave newly reserved/partial files, which must be
+    retained as a failed run. No existing artifact is removed or replaced.
+    """
+    preflight_outputs([path for path, _ in outputs])
+    with ExitStack() as stack:
+        streams = []
+        for path, data in outputs:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            streams.append((stack.enter_context(path.open("xb")), data))
+        for stream, data in streams:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+
+def write_private_reports(reports: list[tuple[Path, dict[str, Any]]], receipt: Path,
+                          extra_files: tuple[Path, ...] = ()) -> None:
+    outputs = [(path, (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+               for path, report in reports]
+    preflight_outputs([path for path, _ in outputs] + [receipt])
+    if any(path.parent.resolve() != receipt.parent.resolve() for path, _ in outputs):
+        raise ValueError("report and checksum outputs must share one run directory")
+    checksums = [(path, hashlib.sha256(data).hexdigest()) for path, data in outputs]
+    checksums.extend((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in extra_files)
+    receipt_bytes = "".join(f"{digest}  {path.name}\n" for path, digest in checksums).encode("utf-8")
+    write_new_outputs(outputs + [(receipt, receipt_bytes)])
+
+
 def write_private_report(path: Path, report: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_private_reports([(path, report)], path.with_name(path.name + ".sha256"))
 
 
 def main() -> int:
@@ -188,7 +230,10 @@ def main() -> int:
     args = parser.parse_args()
     report = audit_key_workspace(args.root)
     if args.write_private_report:
-        write_private_report(args.write_private_report, report)
+        try:
+            write_private_report(args.write_private_report, report)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
     print(json.dumps(report, indent=2))
     return 0 if report["proved"] else 1
 

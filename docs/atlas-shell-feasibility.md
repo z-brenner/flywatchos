@@ -113,30 +113,57 @@ replacement measurement. No target scaffold was made to satisfy this gate.
 
 Use Python 3 with Capstone (audited here with 5.0.7) and the existing Ghidra
 12.1.3 offline project `FR245_1370_CODE`, program `stream_01_fw_all_bin.bin`.
-The project must stay read-only. Ghidra rejects dot-prefixed path components;
-resolve the ignored project junction before invoking headless analysis.
+The project stays read-only. Use the complete-run command below, choosing an
+explicit run directory that does not exist. It atomically claims that directory,
+resolves the ignored project junction (Ghidra rejects dot-prefixed project-path
+components), preflights every output, and launches Ghidra with console,
+headless, and script logs inside the new directory. Do not redirect output to
+an existing evidence log. A repeated directory is rejected with exit 2 before
+opening any output or launching Ghidra; it is never renamed automatically.
 
 ```powershell
-$projectPath = python -B -c "from pathlib import Path; print(Path('artifacts/firmware/ghidra-code').resolve())"
-& ./tools/ghidra/ghidra_12.1.3_PUBLIC/support/analyzeHeadless.bat $projectPath FR245_1370_CODE -process stream_01_fw_all_bin.bin -readOnly -noanalysis -scriptPath tools/garmin-firmware/ghidra_scripts -postScript UsbDetachReport.java artifacts/firmware/analysis/fr245-1370-usb-detach-ghidra.json artifacts/firmware/analysis/fr245-1370-usb-detach-decompilation.txt *> artifacts/firmware/analysis/fr245-1370-usb-detach-ghidra.log
-Get-FileHash artifacts/firmware/analysis/fr245-1370-usb-detach-ghidra.log -Algorithm SHA256 | Format-List | Out-File artifacts/firmware/analysis/fr245-1370-usb-detach-ghidra.log.sha256 -Encoding utf8
+python -B tools/garmin-firmware/atlas_shell_feasibility.py --root . --run-directory artifacts/firmware/analysis/atlas-shell-runs/run-001
 
+$env:FLYOS_ATLAS_EVIDENCE_DIR = (Resolve-Path artifacts/firmware/analysis/atlas-shell-runs/run-001).Path
 python -B -m unittest -v tools/garmin-firmware/tests/test_fr245_key_workspace_audit.py
 python -B -m unittest -v tools/garmin-firmware/tests/test_fr245_usb_detach.py
 python -B -m unittest -v tools/garmin-firmware/tests/test_atlas_shell_feasibility.py
-python -B tools/garmin-firmware/atlas_shell_feasibility.py --root . --write-private-report artifacts/firmware/analysis/fr245-1370-atlas-shell-feasibility.json
+python -B tools/garmin-firmware/atlas_shell_feasibility.py --root . --evidence-dir artifacts/firmware/analysis/atlas-shell-runs/run-001
 ```
 
+The complete-run command writes the Ghidra JSON, private decompilation, three
+logs, three analyzer reports, and one `SHA256SUMS` receipt covering all eight
+other outputs. It prints `go=false` with the nine gates above and exits **1**
+to stop implementation. The last command only reads that run. All analyzer
+CLIs use exit 1 for an unproved result and exit 2 for output custody errors.
+
 The three test files include private-evidence integration tests; those require
-the exact offline image and the Ghidra inventory above. Missing-evidence tests
-use temporary directories. The final command writes all three private reports,
-prints `go=false` with the nine gates above, and exits **1** to stop automation.
-All three analyzer CLIs use exit 1 for an unproved result.
+the exact offline image and a Ghidra inventory. The test-only
+`FLYOS_ATLAS_EVIDENCE_DIR` selects the explicit run; without it the existing
+legacy evidence directory is read. Missing/malformed evidence and collision
+tests use temporary directories, including real read-only Ghidra collision
+tests. Production USB/composition APIs accept an optional `evidence_dir` and
+their CLIs accept `--evidence-dir`; the original `root`-only interfaces remain
+compatible.
+
+For a report-only run, `--write-private-report <new-path>` preflights every
+report and `<new-path>.sha256` before opening any file. Composition preflights
+all three reports together. Report and receipt names must be distinct; files
+are reserved with exclusive creation before any payload is written. The
+Ghidra script separately checks both JSON/decompilation outputs and reserves
+them using `CREATE_NEW`. Existing artifacts are never removed or truncated.
+An I/O failure or a race may leave newly reserved or partial files; retain that
+failed run and choose a different explicit directory. A checksum receipt is
+valid only when every listed file hashes correctly. Do not reuse or clean up
+an earlier run to make a rerun pass.
 
 `UsbDetachReport.java` emits function ranges and hashes, code-block destinations,
 known RAM references, aligned literals, and seeded high-P-code memory operations.
 Its console pins the inventory JSON hash. The Python consumer checks that
 receipt, the original image identity, and **every** extracted function extent
 against the pinned image. A complete computed-alias proof is never inferred
-from a successful Ghidra run or from the inventory's booleans. Decompilation,
+from a successful Ghidra run or from the inventory's booleans. Memory-operation
+rows are validated inside the rejection boundary, including required fields,
+list/row shapes, numeric widths and addresses, and strict boolean pointer
+semantics; malformed inventories return structured blockers. Decompilation,
 console output, inventory, reports, and their checksum receipts remain private.

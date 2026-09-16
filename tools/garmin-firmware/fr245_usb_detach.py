@@ -37,8 +37,9 @@ FUNCTIONS = {
 }
 
 
-def _ghidra_inventory(root: Path, image: bytes, image_sha: str) -> dict[str, Any]:
-    analysis = root / "artifacts/firmware/analysis"
+def _ghidra_inventory(root: Path, image: bytes, image_sha: str,
+                      evidence_dir: Path | None = None) -> dict[str, Any]:
+    analysis = evidence_dir if evidence_dir is not None else root / "artifacts/firmware/analysis"
     path = analysis / "fr245-1370-usb-detach-ghidra.json"
     log_path = analysis / "fr245-1370-usb-detach-ghidra.log"
     receipt: dict[str, Any] = {"verified": False}
@@ -56,6 +57,21 @@ def _ghidra_inventory(root: Path, image: bytes, image_sha: str) -> dict[str, Any
             raise ValueError("Ghidra identity or completion receipt differs")
         if not report["functions"] or not report["state_machine_blocks"]:
             raise ValueError("Ghidra inventory is empty")
+        memory_operations = report.get("memory_operations")
+        if not isinstance(memory_operations, list):
+            raise ValueError("memory_operations must be a list")
+        required = {"function", "instruction", "operation", "constant_pointer", "width", "unresolved_computed_pointer"}
+        for index, item in enumerate(memory_operations):
+            if not isinstance(item, dict) or not required <= item.keys():
+                raise ValueError(f"memory_operations[{index}] lacks required fields")
+            if (any(type(item[field]) is not int or item[field] < 0 for field in ("function", "instruction"))
+                    or type(item["width"]) is not int or item["width"] <= 0
+                    or item["operation"] not in ("LOAD", "STORE")
+                    or type(item["unresolved_computed_pointer"]) is not bool
+                    or (item["constant_pointer"] is not None and
+                        (type(item["constant_pointer"]) is not int or item["constant_pointer"] < 0))
+                    or item["unresolved_computed_pointer"] != (item["constant_pointer"] is None)):
+                raise ValueError(f"memory_operations[{index}] has invalid field types or pointer semantics")
         # Check every extracted function against the pinned input, including
         # discontiguous bodies. A receipt alone is never evidence of identity.
         for function in report["functions"]:
@@ -74,7 +90,7 @@ def _ghidra_inventory(root: Path, image: bytes, image_sha: str) -> dict[str, Any
                        functions=report["functions"],
                        state_machine_blocks=report["state_machine_blocks"],
                        cache_references=[item for item in report["usb_references"] if item["to"] == USB_CACHE],
-                       computed_memory_candidates=report["memory_operations"])
+                       computed_memory_candidates=memory_operations)
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
         receipt["reason"] = f"Ghidra inventory unavailable or rejected: {error}"
     return receipt
@@ -109,7 +125,7 @@ def _state_graph() -> list[dict[str, Any]]:
     return [dict(zip(("from", "to", "guard", "return_delay_ms", "instruction"), row)) for row in rows]
 
 
-def analyze_usb_detach(root: Path) -> dict[str, Any]:
+def analyze_usb_detach(root: Path, *, evidence_dir: Path | None = None) -> dict[str, Any]:
     """Fail unless 3/4 paths, observers, hook context, retry, and modal are proved."""
     image, identity = read_pinned_image(root)
     report: dict[str, Any] = {
@@ -131,7 +147,7 @@ def analyze_usb_detach(root: Path) -> dict[str, Any]:
     if not all(item["proved"] for item in functions):
         report["unresolved"] = ["Pinned function hash differs."]
         return report
-    inventory = _ghidra_inventory(root, image, identity["sha256"])
+    inventory = _ghidra_inventory(root, image, identity["sha256"], evidence_dir)
     report["ghidra"] = inventory
     report["state_machine"].update(local_graph=_state_graph(),
         local_graph_pinned=True, full_transition_semantics_proved=False,
@@ -192,10 +208,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--write-private-report", type=Path)
+    parser.add_argument("--evidence-dir", type=Path)
     args = parser.parse_args()
-    report = analyze_usb_detach(args.root)
+    report = analyze_usb_detach(args.root, evidence_dir=args.evidence_dir)
     if args.write_private_report:
-        write_private_report(args.write_private_report, report)
+        try:
+            write_private_report(args.write_private_report, report)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
     print(json.dumps({key: report[key] for key in ("proved", "edges", "queue_site", "retry_context", "unresolved")}, indent=2))
     return 0 if report["proved"] else 1
 

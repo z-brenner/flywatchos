@@ -1,10 +1,12 @@
 import sys
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "tools" / "garmin-firmware"))
+TOOLS = ROOT / "tools" / "garmin-firmware"
+sys.path.insert(0, str(TOOLS))
 import fr245_key_workspace_audit as audit
 
 
@@ -41,6 +43,20 @@ class KeyWorkspaceTests(unittest.TestCase):
         self.assertFalse(audit.accesses_exclude_pad([{"offset": 0x34, "width": 4}]))
         self.assertFalse(audit.accesses_exclude_pad([{"offset": None, "width": 1}]))
         self.assertFalse(audit.accesses_exclude_pad([]))
+
+    def test_cli_preserves_existing_report_and_checksum(self):
+        for collision in ("report.json", "report.json.sha256"):
+            with self.subTest(collision=collision), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory)
+                sentinel = folder / collision
+                sentinel.write_bytes(b"original evidence\x00\xff")
+                result = subprocess.run([sys.executable, "-B", str(TOOLS / "fr245_key_workspace_audit.py"),
+                    "--root", directory, "--write-private-report", str(folder / "report.json")],
+                    capture_output=True, text=True)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn("output collision", result.stderr.lower())
+                self.assertEqual(b"original evidence\x00\xff", sentinel.read_bytes())
+                self.assertEqual([collision], [path.name for path in folder.iterdir()])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -87,10 +89,10 @@ def _storage(key_report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def evaluate_feasibility(root: Path) -> dict[str, Any]:
+def evaluate_feasibility(root: Path, *, evidence_dir: Path | None = None) -> dict[str, Any]:
     """Return go=false with all named failed gates; never infer missing evidence."""
     key_report = workspace.audit_key_workspace(root)
-    usb_report = usb.analyze_usb_detach(root)
+    usb_report = usb.analyze_usb_detach(root, evidence_dir=evidence_dir)
     image, identity = workspace.read_pinned_image(root)
     view_functions = workspace.hash_functions(image, {
         0x5306C: (0x53081, "5ab36cc5d4dcdda7caeb4b6f78febb14e3d47196a480449069aae0c6688a842a"),
@@ -146,17 +148,68 @@ def evaluate_feasibility(root: Path) -> dict[str, Any]:
     }
 
 
+def report_outputs(path: Path, report: dict[str, Any]) -> list[tuple[Path, dict[str, Any]]]:
+    return [(path, report),
+            (path.parent / "fr245-1370-key-workspace.json", report["key_workspace"]),
+            (path.parent / "fr245-1370-usb-detach.json", report["usb_detach"])]
+
+
+def run_private_analysis(root: Path, run_directory: Path) -> dict[str, Any]:
+    """Claim an explicit fresh directory, then collect all evidence without clobbering."""
+    workspace.preflight_outputs([run_directory])
+    run_directory.parent.mkdir(parents=True, exist_ok=True)
+    run_directory.mkdir()  # Atomic directory claim; concurrent/repeated runs fail.
+    run_directory = run_directory.resolve()
+    root = root.resolve()
+    names = ("fr245-1370-usb-detach-ghidra.json", "fr245-1370-usb-detach-decompilation.txt",
+             "fr245-1370-usb-detach-ghidra.log", "headless.log", "script.log")
+    inventory, decompilation, console, headless_log, script_log = [run_directory / name for name in names]
+    report_path = run_directory / "fr245-1370-atlas-shell-feasibility.json"
+    receipt = run_directory / "SHA256SUMS"
+    workspace.preflight_outputs([run_directory / name for name in names] + [report_path, receipt,
+        run_directory / "fr245-1370-key-workspace.json", run_directory / "fr245-1370-usb-detach.json"])
+    launcher = root / "tools/ghidra/ghidra_12.1.3_PUBLIC/support/analyzeHeadless.bat"
+    project = (root / "artifacts/firmware/ghidra-code").resolve()
+    arguments = [str(launcher), str(project), "FR245_1370_CODE", "-process", "stream_01_fw_all_bin.bin",
+                 "-readOnly", "-noanalysis", "-log", str(headless_log), "-scriptlog", str(script_log),
+                 "-scriptPath", str(root / "tools/garmin-firmware/ghidra_scripts"),
+                 "-postScript", "UsbDetachReport.java", str(inventory), str(decompilation)]
+    if os.name == "nt" and any(any(character in argument for character in '&|<>^%!\r\n') for argument in arguments):
+        raise ValueError("batch launcher paths must not contain shell metacharacters")
+    if not launcher.is_file():
+        raise FileNotFoundError(f"Ghidra launcher unavailable: {launcher}")
+    with console.open("xb") as output:
+        result = subprocess.run(arguments, cwd=root, stdout=output, stderr=subprocess.STDOUT, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"Ghidra failed with exit {result.returncode}; retain the failed run directory")
+    report = evaluate_feasibility(root, evidence_dir=run_directory)
+    if not report["usb_detach"].get("ghidra", {}).get("verified", False):
+        raise RuntimeError("Ghidra completion/identity verification failed; retain the failed run directory")
+    workspace.write_private_reports(report_outputs(report_path, report), receipt,
+                                    tuple(run_directory / name for name in names))
+    return report
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
-    parser.add_argument("--write-private-report", type=Path)
+    outputs = parser.add_mutually_exclusive_group()
+    outputs.add_argument("--write-private-report", type=Path)
+    outputs.add_argument("--run-directory", type=Path, help="new, explicit directory for a complete Ghidra/report run")
+    parser.add_argument("--evidence-dir", type=Path, help="read Ghidra evidence from a previous private run")
     args = parser.parse_args()
-    report = evaluate_feasibility(args.root)
-    if args.write_private_report:
-        workspace.write_private_report(args.write_private_report, report)
-        analysis = args.write_private_report.parent
-        workspace.write_private_report(analysis / "fr245-1370-key-workspace.json", report["key_workspace"])
-        workspace.write_private_report(analysis / "fr245-1370-usb-detach.json", report["usb_detach"])
+    if args.run_directory and args.evidence_dir:
+        parser.error("--run-directory collects new evidence and cannot use --evidence-dir")
+    try:
+        if args.run_directory:
+            report = run_private_analysis(args.root, args.run_directory)
+        else:
+            report = evaluate_feasibility(args.root, evidence_dir=args.evidence_dir)
+            if args.write_private_report:
+                workspace.write_private_reports(report_outputs(args.write_private_report, report),
+                    args.write_private_report.with_name(args.write_private_report.name + ".sha256"))
+    except (OSError, ValueError, RuntimeError) as error:
+        parser.error(str(error))
     print(json.dumps({key: report[key] for key in ("go", "failed_gates", "section_limits")}, indent=2))
     return 0 if report["go"] else 1
 
