@@ -46,10 +46,18 @@ sequence that started as FlyOS's stays FlyOS's even if the view changes.
 Garmin receives either every phase of a sequence or none of them, never a
 suffix.
 
-On release from a stable home the byte becomes `FLY_PULSE`, which lights that
-key's callout for exactly one rendered frame; the display hook then clears it
-back to `FLY_IDLE`. A late or duplicated phase arriving after release is
-swallowed rather than leaked.
+On release the byte becomes `FLY_PULSE`, which lights that key's callout for
+exactly one rendered frame; the display hook then retires it to `FLY_IDLE`.
+
+`FLY_PULSE` is the terminal state of *every* owned release, including one that
+happens while the view has gone non-home or become unclassifiable — a single
+mutation during the release is enough for that, since `stable_view()` needs two
+agreeing scans. Only the cosmetic redraw request is skipped when the view is no
+longer home. Ending such a release at `FLY_IDLE` instead would drop the latch:
+an idle byte matches neither `FLY_HELD` nor `FLY_PULSE`, so the next phase for
+that key would fall through to Garmin as an orphan release with no matching
+press. Keeping the latch is what makes "every phase or none, never a suffix"
+true for every view rather than only for the home one.
 
 ## The tri-state view classifier
 
@@ -59,13 +67,15 @@ observations must agree. It returns one of three things:
 | Result | Meaning |
 | --- | --- |
 | `FLY_VIEW_INVALID` (0) | empty, malformed, cyclic, longer than eight nodes, or changing under the scan |
-| `VIEW_NON_HOME` (1) | a structurally sound list whose first visible node is not the watch face |
+| `FLY_VIEW_NON_HOME` (1) | a structurally sound list whose first visible node is not the watch face |
 | anything else | the first-visible watch-face node itself |
 
 `INVALID` means *unknown*, never *not home*, and it always fails open to
 Garmin. Returning the node as the third case avoids a struct return entirely:
 real nodes are four-byte aligned and far above 1, so the sentinels cannot
-collide with one.
+collide with one. Both sentinels are defined once, as `enum FlyViewClass` in
+`state.h`, and `overlay.c` tests for a home view with `> FLY_VIEW_NON_HOME`;
+there is deliberately no third enumerator, because there is no third value.
 
 ### The `update_prompt` fixture is an unproved placeholder
 

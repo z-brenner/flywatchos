@@ -25,7 +25,7 @@ EXPECTED_IDLE_CALLOUTS = ("LUX", "MOTOR", "MODE", "CALM", "PULSE")
 # as two complement-protected bytes, and keeping every stored state value a
 # compile-time constant, made the state machine smaller than the three-key one
 # it replaced.
-PINNED_PRIMARY = 860
+PINNED_PRIMARY = 856
 PINNED_SECONDARY = 1904
 
 # Module-level build fixture: the target's build/ directory is generated,
@@ -509,19 +509,42 @@ class FiveKeyOwnershipTests(unittest.TestCase):
                     self.assertEqual([{"type": 15, "key": key, "state": phase}
                                       for phase in (0, 2, 1)], result["published"])
                     self.assertEqual("GARMIN_HELD", result["final_local_states"][key])
+                    # A Garmin-owned press is not ours to redraw for.
+                    self.assertEqual([], result["queue_sends"])
 
     def test_reset_garbage_and_legacy_words_are_normalised_at_phase_zero(self):
         # 0x0000 reset, 0xFFFF erased, and the three legacy 13.76 encodings all
         # fail the complement check.  A press at a stable home must recover the
         # key rather than leaving it stuck.
-        for stale in (0x0000, 0xFFFF, 0xFF00, 0x5EA1, 0x5DA2, 0x1234):
-            with self.subTest(stale=hex(stale)):
-                result = N64.emulate_key_sequence(self.bundle, [
-                    {"key": 2, "phase": 0, "initial_words": {2: stale}},
-                    {"key": 2, "phase": 1},
-                ])
-                self.assertEqual([], result["published"])
-                self.assertEqual("FLY_PULSE", result["final_local_states"][2])
+        stale_words = (0x0000, 0xFFFF, N64.LEGACY_IDLE, N64.LEGACY_OWNED,
+                       N64.LEGACY_PULSE, 0x1234)
+        # Every GPIO down as well as none: the design no longer needs an "all
+        # GPIOs released" guard around this cleanup, because phase zero rewrites
+        # only this key's own ownership byte and can therefore never reach a
+        # global latch or another key's in-progress sequence.  Pin that rather
+        # than just asserting it.
+        for stale in stale_words:
+            for mask in (0, 0b11111):
+                with self.subTest(stale=hex(stale), gpio_mask=bin(mask)):
+                    result = N64.emulate_key_sequence(self.bundle, [
+                        {"key": 2, "phase": 0, "gpio_mask": mask,
+                         "initial_words": {2: stale}},
+                        {"key": 2, "phase": 1, "gpio_mask": mask},
+                    ])
+                    self.assertEqual([], result["published"])
+                    self.assertEqual("FLY_PULSE", result["final_local_states"][2])
+
+    def test_normalising_one_key_never_disturbs_another_keys_sequence(self):
+        # DOWN is mid-press and FlyOS-owned.  Pressing BACK, whose word is
+        # garbage and gets normalised, must leave DOWN's latch alone.
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 3, "phase": 0},
+            {"key": 2, "phase": 0, "gpio_mask": 0b01100, "initial_words": {2: 0x1234}},
+            {"key": 3, "phase": 1, "gpio_mask": 0b00100},
+        ])
+        self.assertEqual([], result["published"])
+        self.assertEqual("FLY_PULSE", result["final_local_states"][3])
+        self.assertEqual("FLY_HELD", result["final_local_states"][2])
 
     def test_a_garbage_word_still_fails_open_when_the_view_is_not_home(self):
         result = N64.emulate_key_sequence(self.bundle, [
@@ -564,10 +587,78 @@ class FiveKeyOwnershipTests(unittest.TestCase):
         self.assertEqual(N64.pack_state(N64.IDLE, N64.SYSTEM_HOME),
                          result["key_statuses"][0])
 
+    def test_every_display_write_to_a_key_record_is_one_local_byte(self):
+        # Mirror of test_ownership_writes_only_ever_touch_the_local_byte for the
+        # display path.  A two-byte write at +0x36 would reach the +0x37 mode
+        # byte, which carries the system session (LIGHT) and the detach state
+        # (START) and must stay out of this path's reach entirely.
+        result = N64.emulate_display(
+            self.bundle,
+            key_words={key: N64.pack_state(N64.FLY_PULSE, N64.NORMAL) for key in range(5)})
+        self.assertTrue(result["eligible"])
+        self.assertEqual({"framebuffer", "stack", "key_padding"},
+                         set(result["write_counts"]))
+        # Five keys, each retiring its pulse with exactly one single-byte store.
+        self.assertEqual(5, result["write_counts"]["key_padding"])
+        for key in range(5):
+            self.assertEqual(N64.pack_state(N64.IDLE, N64.NORMAL),
+                             result["key_statuses"][key], key)
+
+    def test_a_pulse_clear_loses_the_race_against_a_new_press(self):
+        # The display hook retires PULSE -> IDLE while a key worker may be
+        # latching a fresh press into the same byte.  The exclusive store must
+        # fail and the compare-exchange give up, leaving the new owner intact.
+        for key in range(5):
+            for racer, expected in ((N64.state_byte(N64.FLY_HELD), "FLY_HELD"),
+                                    (N64.state_byte(N64.GARMIN_HELD), "GARMIN_HELD")):
+                with self.subTest(key=key, racer=expected):
+                    race = N64.emulate_pulse_clear_race(self.bundle, key, racer)
+                    self.assertTrue(race["injected_before_store"])
+                    self.assertEqual(expected, race["final_local"])
+                    self.assertEqual(racer, race["final_byte"])
+
+    def test_an_unopposed_pulse_clear_still_retires_the_pulse(self):
+        # Control for the race test: with no competing write the same code path
+        # must succeed, so the assertion above is about the race and not about
+        # clear_key_pulse being inert.
+        race = N64.emulate_pulse_clear_race(self.bundle, 0,
+                                            N64.state_byte(N64.FLY_PULSE))
+        self.assertEqual("IDLE", race["final_local"])
+        self.assertEqual(N64.pack_state(N64.IDLE, N64.NORMAL), race["final_word"])
+
     def test_a_late_phase_after_release_is_never_leaked_to_garmin(self):
         result = N64.emulate_key_sequence(self.bundle, [
             {"key": 3, "phase": 0}, {"key": 3, "phase": 1}, {"key": 3, "phase": 1}])
         self.assertEqual([], result["published"])
+
+    def test_an_owned_release_keeps_its_latch_whatever_the_view_became(self):
+        # The view can go non-home or unclassifiable during the release itself
+        # -- one mutation is enough to make stable_view() disagree with itself.
+        # The sequence is still FlyOS's, so it must end in a terminal owned
+        # state, never IDLE: an IDLE key matches neither FLY_HELD nor FLY_PULSE
+        # and would send the next phase straight to Garmin as an orphan release
+        # with no matching press.
+        for view in ("not_home", "empty", "malformed", "cycle", "too_long",
+                     "root_mutation", "finder_mismatch", "update_prompt"):
+            for key in range(5):
+                with self.subTest(view=view, key=key):
+                    result = N64.emulate_key_sequence(self.bundle, [
+                        {"key": key, "phase": 0, "view": "valid"},
+                        {"key": key, "phase": 1, "view": view},
+                        {"key": key, "phase": 1, "view": view},
+                        {"key": key, "phase": 4, "view": "valid"},
+                    ])
+                    self.assertEqual([], result["published"])
+                    self.assertEqual("FLY_PULSE", result["final_local_states"][key])
+
+    def test_an_owned_release_away_from_home_asks_for_no_redraw(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 2, "phase": 0, "view": "valid"},
+            {"key": 2, "phase": 1, "view": "not_home"},
+        ])
+        self.assertEqual([], result["published"])
+        # One redraw for the press on home, none for the release away from it.
+        self.assertEqual(1, len(result["queue_sends"]))
 
     def test_the_runtime_key_path_stays_inside_the_pinned_stack_ceiling(self):
         result = N64.emulate_key_sequence(self.bundle, [

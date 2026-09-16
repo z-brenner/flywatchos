@@ -28,11 +28,22 @@ enum FlyDetachMode { DETACH_NONE = 0, DETACH_PENDING = 1, DETACH_RETRY1 = 2,
                      DETACH_QUEUED = 5, DETACH_EXHAUSTED = 6 };
 
 /*
- * Tri-state classification of Garmin's bounded view list.  INVALID covers an
- * empty, malformed, cyclic, over-long or changing list: it means "we do not
- * know", never "not home", and it always fails open to Garmin.
+ * Tri-state classification of Garmin's bounded view list, as returned by
+ * stable_view().  The third state is the home node itself rather than a
+ * separate tag, so the whole classification travels in one word with no struct:
+ *
+ *   FLY_VIEW_INVALID  (0)  empty, malformed, cyclic, over-long, or changing
+ *                          under the scan.  Means "we do not know", never "not
+ *                          home", and always fails open to Garmin.
+ *   FLY_VIEW_NON_HOME (1)  a structurally sound list whose first visible node
+ *                          is not the watch face.
+ *   anything else          the first-visible watch-face node.
+ *
+ * Real nodes are four-byte aligned and far above 1, so neither sentinel can
+ * collide with one.  Test for a home view with `> FLY_VIEW_NON_HOME`; this is
+ * the only definition of these values, and overlay.c uses it directly.
  */
-enum FlyViewClass { FLY_VIEW_INVALID = 0, FLY_VIEW_HOME = 1, FLY_VIEW_NON_HOME = 2 };
+enum FlyViewClass { FLY_VIEW_INVALID = 0, FLY_VIEW_NON_HOME = 1 };
 
 /* Sentinel returned by the validated readers for a complement mismatch. */
 #define FLY_STATE_INVALID 0xFFu

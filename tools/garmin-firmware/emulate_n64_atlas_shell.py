@@ -1077,12 +1077,14 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
         writes.append([uc.reg_read(UC_ARM_REG_PC), address, size, value])
         if FRAMEBUFFER <= address and address + size <= FRAMEBUFFER + FB_SIZE: write_counts["framebuffer"] += size
         elif STACK_BASE <= address and address + size <= STACK_POINTER: write_counts["stack"] += size
-        # SAFETY ALLOWLIST: the display hook may write the audited key halfword
-        # at record +0x36 as a halfword, or either of its two complement-
-        # protected bytes (+0x36 local, +0x37 mode) on its own.  Nothing wider
-        # and nothing at any other address is permitted.
-        elif (address in KEY_PADS and size == 2) or \
-             (address in KEY_PADS + KEY_MODES and size == 1):
+        # SAFETY ALLOWLIST: the display hook clears release pulses, and that is
+        # all it may write outside the framebuffer and its own stack -- one
+        # single byte at a key record's +0x36 ownership byte.  Deliberately
+        # narrower than "the audited halfword": a two-byte write would reach
+        # +0x37, and +0x37 is the system-session and detach-state byte that the
+        # byte-split design exists to keep out of this path's reach.  Widen this
+        # only when a task actually needs it, and say so when you do.
+        elif address in KEY_PADS and size == 1:
             write_counts["key_padding"] += size
         else:
             outside_writes.append([address, size, value]); raise ValueError(f"write escaped framebuffer/stack: {address:#x}")
@@ -1153,6 +1155,92 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
               **captured}
     validate_result(result)
     return result
+
+
+def linked_code(bundle: Bundle, address: int, size: int) -> bytes:
+    """Bytes of a linked function, from whichever payload segment holds it."""
+    if PRIMARY <= address and address + size <= PRIMARY + len(bundle.primary):
+        return bundle.primary[address - PRIMARY:address - PRIMARY + size]
+    require(SECONDARY <= address and address + size <= SECONDARY + len(bundle.secondary),
+            f"address outside both payload segments: {address:#x}")
+    return bundle.secondary[address - SECONDARY:address - SECONDARY + size]
+
+
+def find_instruction(bundle: Bundle, function: str, mnemonic: str) -> int:
+    """Address of the one instruction with this mnemonic inside a linked function."""
+    item = bundle.manifest["symbols"][function]
+    hits = [instruction.address for instruction in
+            Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(
+                linked_code(bundle, item["address"], item["size"]), item["address"])
+            if instruction.mnemonic == mnemonic]
+    require(len(hits) == 1,
+            f"expected exactly one {mnemonic} in {function}, found {len(hits)}")
+    return hits[0]
+
+
+def emulate_pulse_clear_race(bundle: Bundle, key: int, racer: int) -> dict[str, Any]:
+    """Run the linked pulse clear with a competing byte write injected between
+    its exclusive load and its exclusive store.
+
+    This is the one place in the ownership design where hardware atomicity is
+    load-bearing rather than merely reassuring.  The display hook retires a
+    release pulse with PULSE -> IDLE, while a key worker on another context may
+    be latching a brand new press into the very same byte.  The pulse clear must
+    lose that race: it may only retire the pulse it actually observed.
+
+    Injecting `racer` immediately before the STREXB is the tightest possible
+    interleaving -- the exclusive monitor has already been armed by the LDREXB --
+    so the store must fail, and the strong compare-exchange must then re-read,
+    find the byte is no longer PULSE, and give up rather than overwrite the new
+    owner.
+    """
+    require(0 <= key <= 4, "bad key")
+    require(0 <= racer <= 0xFF, "bad racer byte")
+    exclusive_store = find_instruction(bundle, "clear_key_pulse", "strexb")
+    entry = bundle.manifest["symbols"]["clear_key_pulse"]["address"]
+    machine = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_LITTLE_ENDIAN)
+    for base, size in ((PRIMARY, 0x1000), (SECONDARY & ~0xFFF, 0x1000),
+                       (0x1FFC0000, 0x80000), (0x70000, 0x1000)):
+        machine.mem_map(base, size)
+    machine.mem_write(PRIMARY, bundle.primary)
+    machine.mem_write(SECONDARY, bundle.secondary)
+    for pad in KEY_PADS:
+        machine.mem_write(pad, struct.pack("<H", pack_state(FLY_PULSE, NORMAL)))
+    injected, store_attempts, returned = [], 0, False
+    writes: list[list[int]] = []
+
+    def on_code(uc: Uc, address: int, _size: int, _user: Any) -> None:
+        nonlocal store_attempts, returned
+        if address == 0x70000:
+            returned = True
+            uc.emu_stop()
+            return
+        if address != exclusive_store:
+            return
+        store_attempts += 1
+        if injected:
+            return
+        # The monitor is armed and the store is the next instruction to retire.
+        uc.mem_write(KEY_PADS[key], bytes([racer]))
+        injected.append(store_attempts)
+
+    def on_write(uc: Uc, _access: int, address: int, size: int, value: int, _user: Any) -> None:
+        writes.append([uc.reg_read(UC_ARM_REG_PC), address, size, value])
+
+    machine.hook_add(UC_HOOK_CODE, on_code)
+    machine.hook_add(UC_HOOK_MEM_WRITE, on_write)
+    machine.reg_write(UC_ARM_REG_SP, STACK_POINTER)
+    machine.reg_write(UC_ARM_REG_LR, 0x70001)
+    machine.reg_write(UC_ARM_REG_R0, KEY_PADS[key])
+    machine.emu_start(entry | 1, 0, count=100_000)
+    require(returned, "clear_key_pulse did not return")
+    return {"key": key, "racer": racer, "injected_before_store": bool(injected),
+            "store_attempts": store_attempts,
+            "final_byte": machine.mem_read(KEY_PADS[key], 1)[0],
+            "final_local": local_name(machine.mem_read(KEY_PADS[key], 1)[0]),
+            "final_word": struct.unpack("<H", machine.mem_read(KEY_PADS[key], 2))[0],
+            # Every write the pulse clear itself made, excluding the injection.
+            "target_writes": [item for item in writes if item[0] != exclusive_store]}
 
 
 def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[str, Any]:

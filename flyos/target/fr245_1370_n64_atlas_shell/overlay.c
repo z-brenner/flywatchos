@@ -17,11 +17,7 @@ enum {
     KEY_WORKSPACE = 0x1ffdbbc8u,
     KEY_RECORD_BYTES = 0x38u,
     KEY_LOCAL_OFFSET = 0x36u,
-    KEY_COUNT = 5u,
-    /* stable_view() returns 0 for INVALID, 1 for NON_HOME, and otherwise the
-     * first-visible watch-face node.  Real nodes are four-byte aligned and far
-     * above 1, so the sentinel can never collide with one. */
-    VIEW_NON_HOME = 1u
+    KEY_COUNT = 5u
 };
 
 /*
@@ -70,7 +66,7 @@ __attribute__((noinline)) static uint32_t scan_view(void) {
         node = next;
     }
     if (count == 0u) return FLY_VIEW_INVALID;
-    return (matching != 0u && matching == visible) ? matching : VIEW_NON_HOME;
+    return (matching != 0u && matching == visible) ? matching : FLY_VIEW_NON_HOME;
 }
 
 /*
@@ -105,7 +101,8 @@ __attribute__((noinline)) static uint8_t button_bits(uint32_t d) {
     volatile uint8_t *local = key_local(0u);
     uint8_t buttons = read_buttons(d);
     for (uint8_t bit = 1u; bit != 1u << KEY_COUNT; bit = (uint8_t)(bit << 1)) {
-        if (*local == L_HELD || *local == L_PULSE) buttons |= bit;
+        uint8_t owned = *local; /* one sample: this byte is volatile */
+        if (owned == L_HELD || owned == L_PULSE) buttons |= bit;
         local = (volatile uint8_t *)((uint32_t)local + KEY_RECORD_BYTES);
     }
     return buttons;
@@ -148,7 +145,7 @@ __attribute__((noinline)) void flyos_key_event(uint32_t key, uint32_t phase) {
             uint32_t view;
             *local = L_IDLE;
             view = stable_view();
-            if (view > VIEW_NON_HOME) {
+            if (view > FLY_VIEW_NON_HOME) {
                 *local = L_HELD;
                 request_redraw(view);
                 return;
@@ -158,9 +155,16 @@ __attribute__((noinline)) void flyos_key_event(uint32_t key, uint32_t phase) {
             *local = L_GARMIN;
         } else if (*local == L_HELD) {
             if (phase == 1u) {
+                /*
+                 * An owned sequence stays owned through release whatever the
+                 * view has become, so the terminal state is always L_PULSE --
+                 * never L_IDLE, which would drop the latch and let a trailing
+                 * or duplicated phase reach Garmin as an orphan release.  Only
+                 * the cosmetic redraw depends on the view still being home.
+                 */
                 uint32_t view = stable_view();
-                *local = view > VIEW_NON_HOME ? L_PULSE : L_IDLE;
-                if (view > VIEW_NON_HOME) request_redraw(view);
+                *local = L_PULSE;
+                if (view > FLY_VIEW_NON_HOME) request_redraw(view);
             }
             return;
         } else if (*local == L_PULSE) {
@@ -218,7 +222,7 @@ uint32_t n64_overlay_then_flush(uint8_t *framebuffer, int original_wait) {
     d = *(volatile const uint32_t *)0x400ff0d0u;
     /* BACK no longer vetoes the FlyOS face: it is a FlyOS key now, so holding it
      * shows its own callout instead of blanking the frame. */
-    if (stable_view() <= VIEW_NON_HOME) goto dispatch;
+    if (stable_view() <= FLY_VIEW_NON_HOME) goto dispatch;
     {
         FlyBrain64 brain;
         FlyBrainInputs inputs = {0};
