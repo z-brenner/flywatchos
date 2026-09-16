@@ -12,9 +12,12 @@ The public-source evidence behind this assessment is recorded in
 targets the non-Music `HWID 3076` and distinguishes model-matched evidence from Garmin
 handheld recovery behavior and generic K28F capabilities.
 
-The connected watch currently runs the installed synthetic-13.72 full-screen
-overlay while its public software version remains 1370. The Task 5 neural
-construction did not access or write the watch.
+The last user-observed installed build is the synthetic-13.76 N64 controls
+overlay; that observation is not a readback of internal flash. The public
+software version remains 1370. On 2026-09-16, a read-only host check found
+the expected Garmin `091e:2c04` mass-storage device, a Healthy FAT `GARMIN`
+volume, and no pending `GUPDATE.GCD` or `force.tmp`. The quarantined 13.78
+HOME diagnostic and 13.79 restore were not staged or installed.
 
 ## Evidence levels
 
@@ -86,7 +89,16 @@ SHA-256 `8ebefacf6bcc00bec0fb271596abfb9618f9a3114d32b3a106fbd27d5a366adc`). Thi
 best available official application restore artifact for a watch that still reaches the
 normal Garmin updater. It is now a same-public-version package for the connected
 watch and is skipped by the recovered normal forward-version comparison; it is
-not a demonstrated restore path for the installed synthetic-13.72 overlay.
+not a demonstrated restore path for the installed synthetic-13.76 overlay.
+
+A synthetic-13.77 official-code wrapper (5,120,675 bytes, SHA-256
+`724c8fe8bdafd6857116cbb28951e9f2934badab09616a716e450e6676fb3c4d`)
+and a synthetic-13.79 wrapper (5,120,675 bytes, SHA-256
+`7a4fc373c0ceb7d0fbdaffa3bdacde0bc92668c17ebec389d6d4573d8a8c58fe`)
+are preserved in local quarantine. Both carry the official 13.70 executable
+and resources behind newer coherent version/checksum metadata. Neither is an
+official Garmin package or a demonstrated nonboot restore. They can help only
+if GarminOS, the normal USB volume, and the on-watch updater still function.
 
 The exact installed 10.40 system image was not present on the mounted volume. An archived
 copy of Garmin's non-Music product `14935` page names the 11.03 beta archive
@@ -123,7 +135,8 @@ Before requesting approval for a write, the proposal must state:
 5. known entry sequence for recovery, demonstrated without writing;
 6. exact official restore artifact and its SHA-256;
 7. whether recovery covers the application only or also the bootloader;
-8. explicit brick probability with evidence and unresolved assumptions.
+8. brick-risk severity, evidence, and unresolved assumptions; do not invent a
+   numerical probability when the evidence cannot support one.
 
 A user-visible backup and a downloadable GCD do not satisfy these preconditions by
 themselves.

@@ -1082,3 +1082,15 @@
   Findings and limits are in `docs/atlas-shell-static-followup.md` and
   `docs/stateless-home-diagnostic-1378-1379.md`; private firmware, reports,
   packages, and watch data remain outside Git.
+- Continued read-only investigation on the connected device. Windows reported
+  one present Garmin `091e:2c04` USB mass-storage node and a Healthy FAT
+  `GARMIN` volume at `D:`; `D:\Garmin` had no `GUPDATE.GCD` or `force.tmp`.
+  The existing error log was inspected only through local keyword counts and
+  SHA-256, without disclosing its contents. No device file was changed.
+- Rechecked Garmin's official 245 manual and support update procedure. They
+  document normal USB modes, restart, and ordinary update prompts, but provide
+  no model-specific recovery path for a nonbooting application. Corrected
+  `docs/recovery.md` to identify the user-observed installed 13.76 overlay and
+  to distinguish quarantined 13.77/13.79 official-code wrappers from a true
+  nonboot restore. Recorded the source-backed button/USB failure diagnosis in
+  `docs/installed-overlay-ux-diagnosis.md`.
