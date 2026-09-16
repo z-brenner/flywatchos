@@ -575,6 +575,208 @@ class FiveKeyOwnershipTests(unittest.TestCase):
         self.assertLessEqual(result["maximum_runtime_stack_bytes"], 384)
 
 
+LIGHT, BACK = 0, 2
+CHORD_DOWN_MS = 1000
+
+
+def chord_sequence(hold_ms, first=LIGHT, second=BACK, release_first=None,
+                   hold_phase=4, release=True):
+    """Press both chord keys, hold past hold_ms, then release both.
+
+    hold_ms is measured from each key's own phase-zero press timestamp, which is
+    what the target reads out of record offset zero.
+    """
+    if release_first is None:
+        release_first = first
+    release_second = second if release_first == first else first
+    events = [{"key": first, "phase": 0, "tick_ms": CHORD_DOWN_MS},
+              {"key": second, "phase": 0, "tick_ms": CHORD_DOWN_MS},
+              {"key": first, "phase": hold_phase, "tick_ms": CHORD_DOWN_MS + hold_ms}]
+    if release:
+        events += [{"key": release_first, "phase": 1, "tick_ms": CHORD_DOWN_MS + hold_ms + 10},
+                   {"key": release_second, "phase": 1, "tick_ms": CHORD_DOWN_MS + hold_ms + 20}]
+    return events
+
+
+class ChordSessionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.bundle = N64.load_build(NEW_BUILD)
+
+    def test_chord_commits_system_only_after_two_second_hold_and_both_releases(self):
+        result = N64.emulate_key_sequence(self.bundle, chord_sequence(hold_ms=2000))
+        self.assertEqual([], result["published"])
+        self.assertEqual("SYSTEM_HOME", result["final_system_mode"])
+        self.assertTrue(result["both_release_barrier_observed"])
+
+    def test_either_chord_key_order_reaches_the_same_session(self):
+        for first, second in ((LIGHT, BACK), (BACK, LIGHT)):
+            with self.subTest(first=first):
+                result = N64.emulate_key_sequence(
+                    self.bundle, chord_sequence(hold_ms=2000, first=first, second=second))
+                self.assertEqual([], result["published"])
+                self.assertEqual("SYSTEM_HOME", result["final_system_mode"])
+
+    def test_either_release_order_reaches_the_same_session(self):
+        for release_first in (LIGHT, BACK):
+            with self.subTest(release_first=release_first):
+                result = N64.emulate_key_sequence(
+                    self.bundle, chord_sequence(hold_ms=2000, release_first=release_first))
+                self.assertEqual("SYSTEM_HOME", result["final_system_mode"])
+                self.assertTrue(result["both_release_barrier_observed"])
+
+    def test_neither_key_alone_can_arm_or_commit_the_chord(self):
+        for key in (LIGHT, BACK):
+            with self.subTest(key=key):
+                result = N64.emulate_key_sequence(self.bundle, [
+                    {"key": key, "phase": 0, "tick_ms": CHORD_DOWN_MS},
+                    {"key": key, "phase": 4, "tick_ms": CHORD_DOWN_MS + 5000},
+                    {"key": key, "phase": 3, "tick_ms": CHORD_DOWN_MS + 9000},
+                    {"key": key, "phase": 1, "tick_ms": CHORD_DOWN_MS + 9100},
+                ])
+                self.assertEqual([], result["published"])
+                self.assertEqual(["NORMAL"] * 4, result["system_modes"])
+
+    def test_a_release_at_1999ms_arms_but_never_commits(self):
+        result = N64.emulate_key_sequence(self.bundle, chord_sequence(hold_ms=1999))
+        self.assertEqual([], result["published"])
+        self.assertIn("CHORD_HOLD", result["system_modes"])
+        self.assertNotIn("SYSTEM_PENDING", result["system_modes"])
+        self.assertEqual("NORMAL", result["final_system_mode"])
+
+    def test_a_repeat_phase_at_exactly_2000ms_arms_the_pending_session(self):
+        result = N64.emulate_key_sequence(
+            self.bundle, chord_sequence(hold_ms=2000, release=False))
+        self.assertEqual("SYSTEM_PENDING", result["final_system_mode"])
+        self.assertEqual([], result["published"])
+
+    def test_a_single_release_breaks_an_armed_but_unconfirmed_chord(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": LIGHT, "phase": 0, "tick_ms": CHORD_DOWN_MS},
+            {"key": BACK, "phase": 0, "tick_ms": CHORD_DOWN_MS},
+            {"key": LIGHT, "phase": 1, "tick_ms": CHORD_DOWN_MS + 100},
+            {"key": BACK, "phase": 4, "tick_ms": CHORD_DOWN_MS + 5000},
+        ])
+        self.assertEqual(["NORMAL", "CHORD_HOLD", "NORMAL", "NORMAL"],
+                         result["system_modes"])
+        self.assertEqual([], result["published"])
+
+    def test_the_whole_chord_publishes_zero_orphan_events(self):
+        for hold in (0, 1999, 2000, 6000):
+            with self.subTest(hold=hold):
+                result = N64.emulate_key_sequence(self.bundle, chord_sequence(hold_ms=hold))
+                self.assertEqual([], result["published"])
+                self.assertEqual([], [case for case in result["cases"] if case["published"]])
+
+    def test_in_a_system_session_every_new_sequence_belongs_to_garmin(self):
+        events = chord_sequence(hold_ms=2000) + [
+            {"key": 3, "phase": 0}, {"key": 3, "phase": 2}, {"key": 3, "phase": 1}]
+        result = N64.emulate_key_sequence(self.bundle, events)
+        self.assertEqual("SYSTEM_HOME", result["final_system_mode"])
+        self.assertEqual([{"type": 15, "key": 3, "state": phase} for phase in (0, 2, 1)],
+                         result["published"])
+        self.assertEqual("GARMIN_HELD", result["final_local_states"][3])
+
+    def test_a_mode_transition_never_rewrites_an_in_progress_owner(self):
+        # DOWN is FlyOS-held before the chord commits.  Committing the session
+        # must not steal its sequence: its own release stays FlyOS-owned.
+        events = ([{"key": 3, "phase": 0, "tick_ms": CHORD_DOWN_MS}] +
+                  chord_sequence(hold_ms=2000) +
+                  [{"key": 3, "phase": 1, "tick_ms": CHORD_DOWN_MS + 3000}])
+        result = N64.emulate_key_sequence(self.bundle, events)
+        self.assertEqual("SYSTEM_HOME", result["final_system_mode"])
+        self.assertEqual([], result["published"])
+        self.assertEqual("FLY_PULSE", result["final_local_states"][3])
+
+
+class SystemModeDisplayTests(unittest.TestCase):
+    """The display hook owns the excursion half of the session state machine."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bundle = N64.load_build(NEW_BUILD)
+
+    def flush(self, mode, view="valid", pressed_mask=0):
+        result = N64.emulate_display(
+            self.bundle, view=view, pressed_mask=pressed_mask,
+            key_words={N64.KEY_LIGHT: N64.pack_state(N64.FLY_IDLE, mode)})
+        return result, N64.mode_name(result["key_statuses"][N64.KEY_LIGHT] >> 8)
+
+    def test_a_stable_non_home_view_starts_the_excursion(self):
+        result, mode = self.flush(N64.SYSTEM_HOME, view="not_home")
+        self.assertEqual("SYSTEM_EXCURSION", mode)
+        self.assertFalse(result["eligible"])
+        self.assertTrue(result["framebuffer_unchanged"])
+
+    def test_returning_to_a_stable_home_with_every_key_released_clears_it(self):
+        _, mode = self.flush(N64.SYSTEM_EXCURSION)
+        self.assertEqual("NORMAL", mode)
+
+    def test_a_held_key_keeps_the_excursion_latched(self):
+        for mask in (1, 2, 4, 8, 16):
+            with self.subTest(mask=mask):
+                _, mode = self.flush(N64.SYSTEM_EXCURSION, pressed_mask=mask)
+                self.assertEqual("SYSTEM_EXCURSION", mode)
+
+    def test_a_system_session_at_home_does_not_clear_without_an_excursion(self):
+        # Committing the chord leaves the watch face up; the session must not
+        # immediately clear itself before Garmin has actually been visited.
+        _, mode = self.flush(N64.SYSTEM_HOME)
+        self.assertEqual("SYSTEM_HOME", mode)
+
+    def test_an_invalid_view_moves_no_valid_mode(self):
+        for view in ("empty", "malformed", "cycle", "too_long", "root_mutation"):
+            for mode in (N64.SYSTEM_HOME, N64.SYSTEM_EXCURSION, N64.CHORD_HOLD):
+                with self.subTest(view=view, mode=mode):
+                    _, observed = self.flush(mode, view=view)
+                    self.assertEqual(N64.SYSTEM_MODE_NAMES[mode], observed)
+
+    def test_the_renderer_is_told_about_a_held_chord_and_a_live_session(self):
+        for mode, flags in ((N64.NORMAL, 0),
+                            (N64.CHORD_HOLD, N64.FLY_UI_CHORD_ARMED),
+                            (N64.SYSTEM_PENDING, N64.FLY_UI_CHORD_ARMED),
+                            (N64.SYSTEM_HOME, N64.FLY_UI_SYSTEM)):
+            with self.subTest(mode=mode):
+                result, _ = self.flush(mode)
+                self.assertTrue(result["eligible"])
+                self.assertEqual(flags, result["ui_flags"])
+
+    def test_a_reset_or_garbage_latch_fails_open_and_then_recovers(self):
+        for stale in (0x00, 0xFF, 0x5E, 0xA1):
+            with self.subTest(stale=hex(stale)):
+                # Fails open first: a key is still down, so it cannot be
+                # normalised yet, and the frame is left to Garmin.
+                held = N64.emulate_display(
+                    self.bundle, pressed_mask=1,
+                    key_words={N64.KEY_LIGHT: (stale << 8) | N64.state_byte(N64.FLY_IDLE)})
+                self.assertFalse(held["eligible"])
+                self.assertTrue(held["framebuffer_unchanged"])
+                # Recovers on the first quiet flush at a stable home.
+                quiet = N64.emulate_display(
+                    self.bundle,
+                    key_words={N64.KEY_LIGHT: (stale << 8) | N64.state_byte(N64.FLY_IDLE)})
+                self.assertEqual("NORMAL",
+                                 N64.mode_name(quiet["key_statuses"][N64.KEY_LIGHT] >> 8))
+
+    def test_a_garbage_latch_hands_every_new_sequence_to_garmin(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 3, "phase": 0, "initial_mode": 0x5E},
+            {"key": 3, "phase": 1},
+        ])
+        self.assertEqual([{"type": 15, "key": 3, "state": phase} for phase in (0, 1)],
+                         result["published"])
+
+    def test_clearing_the_session_never_disturbs_the_other_mode_bytes(self):
+        # Only LIGHT's mode byte carries FlySystemMode.  START's carries
+        # FlyDetachMode and belongs to a later task; the rest must stay zero.
+        result = N64.emulate_display(
+            self.bundle, key_words={N64.KEY_LIGHT: N64.pack_state(N64.FLY_IDLE,
+                                                                  N64.SYSTEM_EXCURSION)})
+        for key in range(1, 5):
+            self.assertEqual(N64.pack_state(N64.FLY_IDLE, N64.NORMAL),
+                             result["key_statuses"][key], key)
+
+
 class UsbSequenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

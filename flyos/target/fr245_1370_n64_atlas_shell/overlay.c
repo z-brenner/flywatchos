@@ -6,6 +6,7 @@
 typedef uint32_t (*dispatch_fn)(uint8_t *, int);
 typedef void (*dirty_fn)(int, int, int, int);
 typedef uint32_t (*queue_send_fn)(uint32_t, const void *, uint32_t, uint32_t);
+typedef uint32_t (*tick_fn)(void);
 
 void flyos_key_pass(uint32_t, uint32_t);
 
@@ -17,7 +18,14 @@ enum {
     KEY_WORKSPACE = 0x1ffdbbc8u,
     KEY_RECORD_BYTES = 0x38u,
     KEY_LOCAL_OFFSET = 0x36u,
+    KEY_MODE_OFFSET = 0x37u,
     KEY_COUNT = 5u,
+    KEY_LIGHT = 0u,
+    KEY_BACK = 2u,
+    CHORD_HOLD_MS = 2000u,
+    TICK_GETTER = 0x00007fa5u,
+    /* session_flags() sentinel: this frame belongs to Garmin, so do not draw. */
+    SESSION_NO_RENDER = 0xffu,
     /* stable_view() returns 0 for INVALID, 1 for NON_HOME, and otherwise the
      * first-visible watch-face node.  Real nodes are four-byte aligned and far
      * above 1, so the sentinel can never collide with one. */
@@ -34,6 +42,10 @@ enum {
 #define L_HELD   fly_state_byte(FLY_HELD)
 #define L_PULSE  fly_state_byte(FLY_PULSE)
 #define L_GARMIN fly_state_byte(GARMIN_HELD)
+#define M_NORMAL  fly_state_byte(NORMAL)
+#define M_CHORD   fly_state_byte(CHORD_HOLD)
+#define M_PENDING fly_state_byte(SYSTEM_PENDING)
+#define M_SYSTEM  fly_state_byte(SYSTEM_HOME)
 
 static uint8_t valid_node(uint32_t node) {
     return (uint8_t)((node & 3u) == 0u && node >= NODE_LOW && node <= NODE_HIGH);
@@ -93,6 +105,17 @@ static volatile uint8_t *key_local(uint32_t key) {
     return (volatile uint8_t *)(KEY_WORKSPACE + key * KEY_RECORD_BYTES + KEY_LOCAL_OFFSET);
 }
 
+/* FlySystemMode lives in LIGHT's mode byte, and only there.  START's mode byte
+ * carries FlyDetachMode for a later task and is never addressed in this file. */
+static volatile uint8_t *session_mode(void) {
+    return (volatile uint8_t *)(KEY_WORKSPACE + KEY_LIGHT * KEY_RECORD_BYTES + KEY_MODE_OFFSET);
+}
+
+/* Garmin's own press timestamp, stamped into record offset zero at phase zero. */
+static uint32_t key_down_ms(uint32_t key) {
+    return *(volatile const uint32_t *)(KEY_WORKSPACE + key * KEY_RECORD_BYTES);
+}
+
 static uint8_t read_buttons(uint32_t d);
 
 /*
@@ -133,11 +156,52 @@ __attribute__((noinline)) static void request_redraw(uint32_t home) {
 }
 
 /*
+ * One step of the LIGHT+BACK system chord, shared by the hold and release paths
+ * because both need the same two ownership bytes and the same mode byte.
+ *
+ * Holding both advances NORMAL -> CHORD_HOLD -> SYSTEM_PENDING.  A single
+ * release breaks an armed-but-unconfirmed chord.  A confirmed chord commits to
+ * SYSTEM_HOME only once neither chord key is still held -- the both-release
+ * barrier -- so Garmin can never receive an orphan repeat or release phase from
+ * either entry sequence.
+ *
+ * This is called on every FlyOS-owned phase of every key, not just LIGHT and
+ * BACK.  It reads both chord bytes and the mode byte itself, so it is correct
+ * for any key, and testing the key at each call site costs more than the call:
+ * a third key pressed during a chord hold simply ticks the same state machine.
+ */
+__attribute__((noinline)) static void chord_step(void) {
+    uint8_t light = *key_local(KEY_LIGHT);
+    uint8_t back = *key_local(KEY_BACK);
+    volatile uint8_t *mode = session_mode();
+    uint8_t held = *mode;
+
+    if (light == L_HELD && back == L_HELD) {
+        if (held == M_NORMAL) {
+            *mode = M_CHORD;
+        } else if (held == M_CHORD) {
+            /* Both hold times must clear the threshold, so the key pressed
+             * second is the binding one. */
+            uint32_t now = ((tick_fn)TICK_GETTER)();
+            if ((now - key_down_ms(KEY_LIGHT)) >= CHORD_HOLD_MS &&
+                (now - key_down_ms(KEY_BACK)) >= CHORD_HOLD_MS)
+                *mode = M_PENDING;
+        }
+    } else if (held == M_CHORD) {
+        *mode = M_NORMAL;
+    } else if (held == M_PENDING && light != L_HELD && back != L_HELD) {
+        *mode = M_SYSTEM;
+    }
+}
+
+/*
  * One owner per physical sequence, decided once at phase zero and latched in the
  * key's own ownership byte.  Cached USB state no longer changes the decision and
- * no GPIO line can veto it: all five keys belong to FlyOS on a stable home.
+ * no GPIO line can veto it: all five keys belong to FlyOS on a stable home,
+ * unless a deliberate Garmin system session is running.
  */
 __attribute__((noinline)) void flyos_key_event(uint32_t key, uint32_t phase) {
+    uint32_t view = 0u;
     if (key < KEY_COUNT) {
         volatile uint8_t *local = key_local(key);
         if (phase == 0u) {
@@ -145,29 +209,44 @@ __attribute__((noinline)) void flyos_key_event(uint32_t key, uint32_t phase) {
              * this byte first normalizes any reset, legacy 13.76 or garbage
              * encoding found in it.  Only this key's ownership byte is touched,
              * so no global latch and no other sequence can be disturbed. */
-            uint32_t view;
             *local = L_IDLE;
             view = stable_view();
-            if (view > VIEW_NON_HOME) {
+            /* NORMAL, CHORD_HOLD and SYSTEM_PENDING are FlyOS-owning modes.
+             * SYSTEM_HOME, SYSTEM_EXCURSION and any unreadable latch are not.
+             * Comparing whole bytes against the three constants validates the
+             * complement at the same time and folds to three immediates. */
+            uint8_t held = *session_mode();
+            if (view > VIEW_NON_HOME &&
+                (held == M_NORMAL || held == M_CHORD || held == M_PENDING)) {
                 *local = L_HELD;
-                request_redraw(view);
-                return;
+                goto owned;
             }
-            /* NON_HOME or INVALID: Garmin owns the whole sequence, and the
-             * latch makes every later phase pass through without re-deciding. */
+            /* NON_HOME, INVALID, or a live system session: Garmin owns the whole
+             * sequence, and the latch makes every later phase pass through
+             * without re-deciding. */
             *local = L_GARMIN;
         } else if (*local == L_HELD) {
             if (phase == 1u) {
-                uint32_t view = stable_view();
-                *local = view > VIEW_NON_HOME ? L_PULSE : L_IDLE;
-                if (view > VIEW_NON_HOME) request_redraw(view);
+                view = stable_view();
+                if (view > VIEW_NON_HOME) {
+                    *local = L_PULSE;
+                    goto owned;
+                }
+                *local = L_IDLE;
             }
+            chord_step();
             return;
         } else if (*local == L_PULSE) {
             return; /* still ours: a late phase after release is never leaked */
         }
     }
     flyos_key_pass(key, phase);
+    return;
+owned:
+    /* Every FlyOS-owned press and release converges here: tick the chord state
+     * machine, then ask for the one cosmetic redraw that shows the change. */
+    chord_step();
+    request_redraw(view);
 }
 
 static uint8_t read_buttons(uint32_t d) {
@@ -210,15 +289,55 @@ static uint8_t battery_percent(uint32_t bits) {
     return (uint8_t)(mantissa >> (150u - exponent));
 }
 
+/*
+ * The excursion half of the session state machine, and the answer to "what does
+ * the renderer get, if it runs at all".  Kept out of n64_overlay_then_flush's
+ * own frame, which has no slack under the pinned 384-byte stack ceiling.
+ *
+ * SYSTEM_HOME -> SYSTEM_EXCURSION records that Garmin has actually been visited,
+ * which is what stops a freshly committed session clearing itself while the
+ * watch face is still up.  SYSTEM_EXCURSION -> NORMAL then needs a stable home
+ * with every key released.  An INVALID view moves no valid mode at all.
+ *
+ * Returns SESSION_NO_RENDER when this frame belongs to Garmin: a non-home or
+ * unclassifiable view, or a latch too corrupt to act on.
+ */
+__attribute__((noinline)) static uint8_t session_flags(uint32_t view, uint32_t d) {
+    static const uint8_t presentation[5] = {
+        0u, FLY_UI_CHORD_ARMED, FLY_UI_CHORD_ARMED, FLY_UI_SYSTEM, FLY_UI_SYSTEM
+    };
+    volatile uint8_t *mode = session_mode();
+    uint8_t held = fly_state_read_byte(*mode);
+
+    if (view <= VIEW_NON_HOME) {
+        /* Only a stable non-home view records that Garmin was really visited;
+         * an INVALID view moves nothing. */
+        if (view == VIEW_NON_HOME && held == SYSTEM_HOME)
+            *mode = fly_state_byte(SYSTEM_EXCURSION);
+        return SESSION_NO_RENDER;
+    }
+    /* Stable home.  A finished excursion and an unreadable latch both recover
+     * here, and only here: every key must be released first, so this can never
+     * cut across a sequence still in progress. */
+    if (held >= SYSTEM_EXCURSION && read_buttons(d) == 0u) {
+        *mode = M_NORMAL;
+        held = NORMAL;
+    }
+    /* Anything still unreadable fails open rather than drawing over Garmin. */
+    return held < 5u ? presentation[held] : SESSION_NO_RENDER;
+}
+
 __attribute__((section(".overlay.entry"), used))
 uint32_t n64_overlay_then_flush(uint8_t *framebuffer, int original_wait) {
     uint32_t d;
+    uint8_t session;
     (void)original_wait;
     if (framebuffer == (uint8_t *)0) goto dispatch;
     d = *(volatile const uint32_t *)0x400ff0d0u;
     /* BACK no longer vetoes the FlyOS face: it is a FlyOS key now, so holding it
      * shows its own callout instead of blanking the frame. */
-    if (stable_view() <= VIEW_NON_HOME) goto dispatch;
+    session = session_flags(stable_view(), d);
+    if (session == SESSION_NO_RENDER) goto dispatch;
     {
         FlyBrain64 brain;
         FlyBrainInputs inputs = {0};
@@ -232,12 +351,9 @@ uint32_t n64_overlay_then_flush(uint8_t *framebuffer, int original_wait) {
             inputs.valid_mask = FLY_BRAIN64_VALID_BATTERY;
         }
         fly_brain64_reconstruct(&brain, 0x46594f53u, tick, &inputs);
-        /* FLY_UI_CHORD_ARMED and FLY_UI_SYSTEM stay clear: nothing on this
-         * image decides a chord hold or a system session yet, and the
-         * five-key ownership state machine that will set them is a later
-         * task.  Fabricating either here would be inventing telemetry. */
         n64_render(framebuffer, &brain, &inputs, tick,
-                   (uint8_t)((usb_state == 3u || usb_state == 4u) ? FLY_UI_USB : 0u));
+                   (uint8_t)(session |
+                             ((usb_state == 3u || usb_state == 4u) ? FLY_UI_USB : 0u)));
         clear_key_pulses();
         ((dirty_fn)0x0000f2e9u)(0, 0, 240, 240);
     }

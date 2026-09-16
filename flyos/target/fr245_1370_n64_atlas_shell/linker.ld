@@ -11,6 +11,12 @@ SECTIONS
         *overlay.o(.text.scan_view)
         *overlay.o(.text.stable_view)
         *overlay.o(.text.flyos_key_event)
+        /* Display hot path.  These three sit here only to balance the two
+         * pinned regions: the payload fits the 3071-byte allocation as a whole,
+         * but .secondary alone would overflow.  Neither region's bound changes. */
+        *overlay.o(.text.button_bits)
+        *overlay.o(.text.clear_key_pulse)
+        *overlay.o(.text.clear_key_pulses)
         *brain64_packed.o(.text.fly_brain64_reconstruct)
         *renderer.o(.text.pixel)
         *renderer.o(.text.text)
