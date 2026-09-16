@@ -1004,3 +1004,32 @@
   volume, updater directory, or `GUPDATE.GCD` was accessed during this work.
   Feasibility remains **YELLOW** because recovery still requires a booting
   GarminOS/USB updater and no nonboot recovery path is known.
+
+## 2026-09-15 - approved N64 controls candidate staged and safely ejected
+
+- Received exact approval for the disclosed synthetic 13.76 controls candidate
+  after presenting its 5,120,675-byte size, SHA-256, `D:\Garmin\GUPDATE.GCD`
+  destination, application/QSPI rewrite scope, nonzero brick risk, conditional
+  restore, and absence of a known nonboot recovery path.
+- A fresh read-only preflight found one expected Garmin USB `091e:2c04` device,
+  Forerunner 245 part `006-B3076-00`, public software 1370, a Healthy/OK GARMIN
+  FAT volume, sufficient free space, and no existing `GUPDATE.GCD`, staging
+  temporary, or `force.tmp`.
+- Temporarily enabled only the exact candidate filename and SHA-256
+  `9dc61b99cebacc50f121b9145ddfab21445344fac6f70a4ab68dde205fcf84de`.
+  The dry run repeated every identity, volume, absence, space, size, and hash
+  check before writing.
+- Created a same-directory temporary with create-new semantics, copied and
+  flushed the exact bytes, verified its complete SHA-256, renamed it to
+  `GUPDATE.GCD`, and performed two complete final-file readbacks. Final size and
+  SHA-256 matched; the temporary was absent.
+- Restored the staging denylist before eject. A direct repeat invocation failed
+  before device access as designed. The re-locked script SHA-256 is
+  `9c6486539f1bfc48762a8ff8b4fa6f7c96a8146025fb166fb24eab39c10a1d6c`.
+- Requested Windows safe eject and confirmed that `D:` disappeared immediately.
+  The sanitized staging receipt is
+  `artifacts/analysis/neural-specimen-n64-controls-live-staging-1376.json`,
+  SHA-256 `287057b8b4827ec067291840ac217b9cdfb7a6e52573b9070673efa12c1b79dc`.
+  No private device identifiers or personal files are included.
+- Installation has not yet been observed. No host reset, on-watch selection,
+  repeat write, or restore action was performed.
