@@ -27,6 +27,23 @@ enum FlyDetachMode { DETACH_NONE = 0, DETACH_PENDING = 1, DETACH_RETRY1 = 2,
                      DETACH_RETRY2 = 3, DETACH_RETRY3 = 4,
                      DETACH_QUEUED = 5, DETACH_EXHAUSTED = 6 };
 
+/*
+ * Tri-state classification of Garmin's bounded view list.  INVALID covers an
+ * empty, malformed, cyclic, over-long, or changing list: it is "we do not
+ * know", never "not home", and always fails open to Garmin.
+ */
+enum FlyViewClass { FLY_VIEW_INVALID = 0, FLY_VIEW_HOME = 1, FLY_VIEW_NON_HOME = 2 };
+
+struct FlyViewResult {
+    uint32_t home; /* first-visible watch-face node, or 0 unless kind is HOME */
+    uint8_t kind;  /* enum FlyViewClass */
+};
+
+/* Renderer flags passed as n64_render's final argument. */
+#define FLY_UI_USB 1u
+#define FLY_UI_CHORD_ARMED 2u
+#define FLY_UI_SYSTEM 4u
+
 /* Sentinel returned by the validated readers for a complement mismatch. */
 #define FLY_STATE_INVALID 0xFFu
 
