@@ -90,8 +90,8 @@ complement-protected bytes (`state.h`):
 
 | Byte | Owner | Values |
 | --- | --- | --- |
-| `+0x36` local | this task | `FLY_IDLE`, `FLY_HELD`, `FLY_PULSE`, `GARMIN_HELD` |
-| `+0x37` mode | LIGHT only: `FlySystemMode`. START only: `FlyDetachMode` (Task 5). Others must be zero. | |
+| `+0x36` local | key ownership, this task | `FLY_IDLE`, `FLY_HELD`, `FLY_PULSE`, `GARMIN_HELD` |
+| `+0x37` mode | LIGHT: the system session. START: the detach state (Task 5). BACK, DOWN and UP must be zero. | `FlySystemMode` / `FlyDetachMode` |
 
 Each byte holds its value in bits 0-3 and the one's complement in bits 4-7, so
 `fly_state_word(local, mode) == fly_state_byte(local) | (fly_state_byte(mode) << 8)`.
