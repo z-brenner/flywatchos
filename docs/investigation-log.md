@@ -1033,3 +1033,52 @@
   No private device identifiers or personal files are included.
 - Installation has not yet been observed. No host reset, on-watch selection,
   repeat write, or restore action was performed.
+
+## 2026-09-16 - atlas-shell proof gate and offline diagnostic
+
+- Reconstructed the reported Garmin-navigation and charging-stale behavior from
+  the installed 13.76 overlay's key/USB policy. The atlas-shell feasibility
+  gate against pinned official 13.70 firmware returned `go=false`; nine of ten
+  required gates initially failed. Public-safe analyzers and preservation-safe
+  report writers were merged to `main`. A fresh 19/19 regression run passed.
+- Closed the bounded HOME/NON_HOME/INVALID native-view classifier offline. It
+  uses two matching snapshots of at most eight nodes, checks links and cycles,
+  and gives malformed or changing lists back to Garmin. The historical Install
+  Now/Later first-visible identity was not observed and remains unproved.
+- Closed the known key scheduler access path at object byte 19 and direct key
+  manager accesses at record byte `0x35`. Startup zeroing writes all five
+  proposed final halfwords, disproving the original full-lifetime untouched
+  premise. A narrower reset-epoch CAS protocol is defined but not approved:
+  one external-XIP writer takes an unbounded caller-supplied pointer; if
+  invoked with a key-adjacent address, its 40-byte clear can overlap the
+  workspace. Its reachability and pointer bounds remain unproved. Recognized
+  eDMA destinations are fixed peripheral addresses outside it.
+- USB state 3 can defer a detach-input test through external guards. Observer
+  dispatch and native view lifecycle do not guarantee a home return or a
+  display flush after disconnect. USB-family view identities are not proven
+  charging-only; one USB cleanup path also mutates an update-view identity.
+  The alternative USB hook/charging-view shortcuts were rejected.
+- An exact Ghidra byte audit of `0x001F70F6..0x001F77FF` found 1,802 erased
+  bytes and no recovered reference or occupied unit in both official 13.70
+  mappings. Proprietary metadata ownership and computed references remain
+  unproved, so this is an offline candidate only.
+- Compiled and emulated a stateless display-hook probe. The first variant drew
+  over native screens and was rejected. The HOME-only revision leaves
+  NON_HOME/INVALID/null frames unchanged and passed 49/49 Unicorn cases. It
+  cannot distinguish a hidden native view from an absent physical refresh
+  when its panel remains frozen.
+- Constructed a create-new, **offline-only** synthetic 13.78 HOME diagnostic
+  and 13.79 official-code restore pair under ignored quarantine. Each is
+  5,120,675 bytes. Candidate SHA-256 is
+  `92ce1e4bf9360cdda6fac37729f8b7bd85e5ab398482a4aa1b7b04f929509e5e`;
+  restore SHA-256 is
+  `7a4fc373c0ceb7d0fbdaffa3bdacde0bc92668c17ebec389d6d4573d8a8c58fe`.
+  Exact official reconstruction, confirmed application-side full-image checks,
+  staging-lock check, and 7/7 package tests passed. Independent review approved
+  offline construction only. The pair was not staged or written to the watch.
+- Live diagnostic use is **NO-GO**: its limited information does not justify a
+  full-image update with unknown nonboot recovery. The 13.79 wrapper is a
+  conditional rollback only if GarminOS and the normal USB updater still work.
+  Findings and limits are in `docs/atlas-shell-static-followup.md` and
+  `docs/stateless-home-diagnostic-1378-1379.md`; private firmware, reports,
+  packages, and watch data remain outside Git.
