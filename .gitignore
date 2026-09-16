@@ -15,6 +15,7 @@ GarminDevice.xml
 /tools/ghidra/
 
 # Generated outputs
+.worktrees/
 **/build/
 **/build-*/
 **/__pycache__/
