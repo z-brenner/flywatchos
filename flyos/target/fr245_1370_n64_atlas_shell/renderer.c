@@ -20,11 +20,13 @@ static const char states[4][7] = {"REST", "MOVE", "AROUSE", "QUIET"};
 static const uint8_t press_width[5] = {12u, 20u, 12u, 12u, 11u};
 
 /*
- * The one and only framebuffer store in this payload.  It is kept out of line
- * and behind an optimisation barrier so the bound check compiles to a real
- * branch rather than a Thumb IT block: a single unconditional store is what
- * makes "this payload writes nowhere but the framebuffer" auditable straight
- * out of the disassembly, and it is what linker.ld pins into .primary.
+ * The only bounds-checked framebuffer store in this payload; n64_render's
+ * opening clear is the one other store, and it walks the frame directly.
+ * pixel() is kept out of line and behind an optimisation barrier so the bound
+ * check compiles to a real branch rather than a Thumb IT block: a single
+ * unconditional store is what makes "this payload writes nowhere but the
+ * framebuffer" auditable straight out of the disassembly, and it is what
+ * linker.ld pins into .primary.
  */
 __attribute__((noinline))
 static void pixel(uint8_t *fb, unsigned x, unsigned y, uint8_t color) {

@@ -19,6 +19,11 @@ EXPECTED_BUTTON_LABELS = {1: "LIGHT // LUX", 2: "START // MOTOR BURST",
                           4: "BACK // MODE", 8: "DOWN // CALM", 16: "UP // PULSE"}
 EXPECTED_IDLE_CALLOUTS = ("LUX", "MOTOR", "MODE", "CALM", "PULSE")
 
+# Measured linked sizes of the two pinned payload envelopes (limits 1023 and
+# 2048), down from the 996 + 2044 byte controls baseline this target forked.
+PINNED_PRIMARY = 944
+PINNED_SECONDARY = 1928
+
 # Module-level build fixture: the target's build/ directory is generated,
 # gitignored output (see .gitignore's **/build/) -- a clean checkout has none,
 # and nothing else in this task produces flyos/target/.../build/.  Build the
@@ -165,9 +170,12 @@ class TargetBuildTests(unittest.TestCase):
         secondary = self.bundle.manifest["segments"]["secondary"]["size"]
         self.assertLessEqual(primary, 1023)
         self.assertLessEqual(secondary, 2048)
-        # The atlas rewrite is a size reduction: it must not spend more flash
-        # than the 996 + 2044 byte controls baseline it replaces.
-        self.assertLess(primary + secondary, 996 + 2044)
+        # The atlas rewrite is a size reduction against the 996 + 2044 byte
+        # controls baseline, and the freed flash is what a later task's state
+        # machine has to fit into.  Pin the measured sizes exactly so giving
+        # any of it back has to be a conscious re-baseline, not a silent drift.
+        self.assertEqual((PINNED_PRIMARY, PINNED_SECONDARY), (primary, secondary))
+        self.assertLessEqual(primary + secondary, PINNED_PRIMARY + PINNED_SECONDARY)
 
 
 class AtlasMappingTests(unittest.TestCase):
@@ -221,6 +229,21 @@ class AtlasMappingTests(unittest.TestCase):
                   3: range(40, 48), 4: range(48, 56), 5: range(56, 64)}
         for item in self.manifest["neurons"]:
             self.assertIn(item["id"], ranges[item["population"]])
+
+    def test_geometry_only_renders_exactly_what_the_audited_path_renders(self):
+        # Every one of the 257 renders behind build_atlas_manifest uses the
+        # geometry_only path, which drops the per-instruction allowlist, the
+        # stack tracking and both memory hooks for speed.  Pin it to the fully
+        # hooked render, which is itself compared against the native host
+        # oracle -- that is the check that would have caught the Unicorn
+        # IT-block write-hook divergence immediately.
+        for fixture in ({}, {"pressed_mask": 2}, {"forced_activation": (56, 700)}):
+            with self.subTest(fixture=fixture):
+                audited = N64.emulate_display(self.bundle, **fixture)
+                fast = N64.emulate_display(self.bundle, geometry_only=True, **fixture)
+                self.assertEqual(audited["framebuffer"], fast["framebuffer"])
+                self.assertEqual(audited["eligible"], fast["eligible"])
+                self.assertEqual(audited["activation"], fast["activation"])
 
     def test_deriving_the_mapping_again_reproduces_the_same_hash(self):
         # Drop the memo so this really re-runs all 257 emulations rather than

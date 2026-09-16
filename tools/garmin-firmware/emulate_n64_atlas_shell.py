@@ -546,7 +546,7 @@ def stack_audit(build: Path, symbols: dict) -> dict:
 
 PREDICATED_STORE = re.compile(
     r"^\s*([0-9a-f]+):\s+(?:[0-9a-f]{4,8}\s+)+"
-    r"((?:str|stm|push)[a-z]*(?:eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le))(?:\.[nw])?\s")
+    r"((?:v?str|v?stm|push)[a-z]*(?:eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le))(?:\.[nw])?\s")
 
 
 def assert_unconditional_stores(build: Path) -> None:

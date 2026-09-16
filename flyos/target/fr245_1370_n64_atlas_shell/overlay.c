@@ -130,11 +130,18 @@ __attribute__((noinline)) void flyos_key_event(uint32_t key, uint32_t state) {
 static uint8_t read_buttons(uint32_t d) {
     uint32_t a = *(volatile const uint32_t *)0x400ff010u;
     uint32_t c = *(volatile const uint32_t *)0x400ff090u;
-    return (uint8_t)((((c & 0x00000800u) == 0u) << 0) |
-                     (((d & 0x00000400u) == 0u) << 1) |
-                     (((d & 0x00000002u) == 0u) << 2) |
-                     (((a & 0x00100000u) == 0u) << 3) |
-                     (((a & 0x00400000u) == 0u) << 4));
+    /*
+     * Gather the five active-low key lines into one word and invert once
+     * rather than inverting each line: LIGHT is C11, START D10, BACK D1,
+     * DOWN A20 and UP A22.  `d` stays the caller's single sample, and the
+     * two port reads keep their order, so this is purely a smaller encoding
+     * of the same value.
+     */
+    uint32_t held = ((c >> 11) & 1u) | (((d >> 10) & 1u) << 1) |
+                    (((d >> 1) & 1u) << 2) | (((a >> 20) & 1u) << 3) |
+                    (((a >> 22) & 1u) << 4);
+
+    return (uint8_t)(~held & 0x1fu);
 }
 
 static uint32_t read_rtc_tick(void) {
