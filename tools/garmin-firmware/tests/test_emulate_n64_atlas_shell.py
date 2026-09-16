@@ -21,8 +21,12 @@ EXPECTED_IDLE_CALLOUTS = ("LUX", "MOTOR", "MODE", "CALM", "PULSE")
 
 # Measured linked sizes of the two pinned payload envelopes (limits 1023 and
 # 2048), down from the 996 + 2044 byte controls baseline this target forked.
-PINNED_PRIMARY = 944
-PINNED_SECONDARY = 1928
+# Re-baselined by the five-key ownership work: addressing the audited halfword
+# as two complement-protected bytes, and keeping every stored state value a
+# compile-time constant, made the state machine smaller than the three-key one
+# it replaced.
+PINNED_PRIMARY = 860
+PINNED_SECONDARY = 1904
 
 # Module-level build fixture: the target's build/ directory is generated,
 # gitignored output (see .gitignore's **/build/) -- a clean checkout has none,
@@ -84,6 +88,26 @@ class StateCodecTests(unittest.TestCase):
         self.assertEqual(0xB4F0, N64.pack_state(N64.IDLE, N64.SYSTEM_EXCURSION))
         self.assertIsNone(N64.unpack_state(0x0000))
         self.assertIsNone(N64.unpack_state(0xFF00))
+
+    def test_the_word_is_exactly_its_two_complement_protected_bytes(self):
+        # The target writes the local nibble and the mode nibble as two
+        # independent byte stores rather than composing a halfword.  That is
+        # only legitimate if the two bytes are exactly state.h's word, so pin
+        # the decomposition across every valid combination.
+        for local, mode in itertools.product(range(4), range(7)):
+            word = N64.pack_state(local, mode)
+            self.assertEqual(word & 0xFF, N64.state_byte(local))
+            self.assertEqual(word >> 8, N64.state_byte(mode))
+            self.assertEqual(word, N64.state_byte(local) | (N64.state_byte(mode) << 8))
+
+    def test_every_recognised_cold_or_legacy_byte_fails_the_complement_check(self):
+        # 0x00 reset, 0xFF erased, and the low bytes of the three legacy 13.76
+        # encodings must all read as INVALID, which is what lets phase zero
+        # normalise them without ever overwriting a real FlyOS state.
+        for stale in (0x00, 0xFF, 0xA1, 0xA2):
+            self.assertEqual(N64.STATE_INVALID, N64.read_state_byte(stale), hex(stale))
+        for valid in range(16):
+            self.assertEqual(valid, N64.read_state_byte(N64.state_byte(valid)))
 
     def test_unpack_round_trips_every_valid_local_and_mode_combination(self):
         for local, mode in itertools.product(range(4), range(7)):
@@ -274,17 +298,14 @@ class VisualLabelTests(unittest.TestCase):
         self.assert_target_text(self.frame(ui_flags=N64.FLY_UI_SYSTEM), "GARMIN//SYSTEM")
 
     def test_every_physically_reachable_key_shows_its_callout(self):
-        # Holding BACK is the Garmin escape chord, so this overlay passes that
-        # frame straight through and BACK's own callout is not reachable until
-        # five-key ownership lands; the other four are pressed for real here.
+        # All five keys belong to FlyOS on a stable home now, so BACK renders
+        # its own callout instead of passing the frame through to Garmin.
         for mask, text in EXPECTED_BUTTON_LABELS.items():
-            result = N64.emulate_display(self.bundle, pressed_mask=mask)
-            if mask == 4:
-                self.assertFalse(result["eligible"])
-                self.assertTrue(result["framebuffer_unchanged"])
-                continue
-            self.assertEqual(mask, result["buttons"])
-            self.assert_target_text(result["framebuffer"], text)
+            with self.subTest(mask=mask):
+                result = N64.emulate_display(self.bundle, pressed_mask=mask)
+                self.assertTrue(result["eligible"])
+                self.assertEqual(mask, result["buttons"])
+                self.assert_target_text(result["framebuffer"], text)
 
     def test_idle_frame_names_every_key_at_its_physical_height(self):
         idle = self.frame()
@@ -332,45 +353,31 @@ class KeySequenceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.bundle = N64.load_build(NEW_BUILD)
 
-    def test_owned_start_down_up_sequences_never_reach_garmin_publisher(self):
-        for key in (1, 3, 4):
-            result = N64.emulate_key_sequence(self.bundle, [
-                {"key": key, "phase": 0, "tick_ms": 5000},
-                {"key": key, "phase": 2, "tick_ms": 5200},
-                {"key": key, "phase": 3, "tick_ms": 5400},
-                {"key": key, "phase": 1, "tick_ms": 5600},
-            ])
-            self.assertEqual([], result["published"])
-            self.assertEqual([N64.KEY_OWNED, N64.KEY_OWNED, N64.KEY_OWNED, N64.KEY_PULSE],
-                             [case["statuses"][key] for case in result["cases"]])
-            self.assertLessEqual(result["maximum_runtime_stack_bytes"], 384)
+    def test_every_owned_sequence_walks_held_then_pulse_and_skips_garmin(self):
+        for key in range(5):
+            with self.subTest(key=key):
+                result = N64.emulate_key_sequence(self.bundle, [
+                    {"key": key, "phase": 0, "tick_ms": 5000},
+                    {"key": key, "phase": 2, "tick_ms": 5200},
+                    {"key": key, "phase": 3, "tick_ms": 5400},
+                    {"key": key, "phase": 1, "tick_ms": 5600},
+                ])
+                self.assertEqual([], result["published"])
+                self.assertEqual(["FLY_HELD", "FLY_HELD", "FLY_HELD", "FLY_PULSE"],
+                                 [case["local_states"][key] for case in result["cases"]])
+                self.assertLessEqual(result["maximum_runtime_stack_bytes"], 384)
 
-    def test_light_and_back_replay_original_publisher_with_new_field_names(self):
-        for key in (0, 2):
-            result = N64.emulate_key_sequence(self.bundle, [
-                {"key": key, "phase": 0}, {"key": key, "phase": 2}, {"key": key, "phase": 1},
-            ])
-            self.assertEqual([{"type": 15, "key": key, "state": phase}
-                              for phase in (0, 2, 1)], result["published"])
-            self.assertEqual([], result["queue_sends"])
-
-    def test_gpio_mask_back_bit_forces_garmin_ownership_like_old_back_held(self):
-        BACK_BIT = 1 << 2
-        result = N64.emulate_key_sequence(self.bundle, [
-            {"key": 3, "phase": 0, "gpio_mask": BACK_BIT},
-        ])
-        self.assertEqual([{"type": 15, "key": 3, "state": 0}], result["published"])
-        self.assertEqual([], result["queue_sends"])
-        self.assertEqual(N64.KEY_IDLE, result["final_statuses"][3])
-
-    def test_gpio_mask_other_bits_do_not_block_ownership(self):
-        LIGHT_START_DOWN_UP = (1 << 0) | (1 << 1) | (1 << 3) | (1 << 4)
-        result = N64.emulate_key_sequence(self.bundle, [
-            {"key": 4, "phase": 0, "gpio_mask": LIGHT_START_DOWN_UP},
-            {"key": 4, "phase": 1, "gpio_mask": LIGHT_START_DOWN_UP},
-        ])
-        self.assertEqual([], result["published"])
-        self.assertEqual(N64.KEY_PULSE, result["final_statuses"][4])
+    def test_gpio_mask_never_blocks_ownership_on_a_stable_home(self):
+        # 13.76 failed open whenever BACK's line was down; no GPIO combination
+        # may do that now.
+        for mask in (0, 0b00100, 0b11011, 0b11111):
+            with self.subTest(mask=bin(mask)):
+                result = N64.emulate_key_sequence(self.bundle, [
+                    {"key": 4, "phase": 0, "gpio_mask": mask},
+                    {"key": 4, "phase": 1, "gpio_mask": mask},
+                ])
+                self.assertEqual([], result["published"])
+                self.assertEqual("FLY_PULSE", result["final_local_states"][4])
 
     def test_tick_ms_is_returned_by_the_0x7fa4_getter_and_stamped_at_record_offset_zero(self):
         result = N64.emulate_key_sequence(self.bundle, [
@@ -386,18 +393,186 @@ class KeySequenceTests(unittest.TestCase):
 
     def test_view_fixture_still_gates_ownership_under_the_new_name(self):
         for view in ("empty", "malformed", "not_home"):
-            result = N64.emulate_key_sequence(self.bundle, [{"key": 3, "phase": 0, "view": view}])
-            self.assertEqual([{"type": 15, "key": 3, "state": 0}], result["published"])
-            self.assertEqual(N64.KEY_IDLE, result["final_statuses"][3])
+            with self.subTest(view=view):
+                result = N64.emulate_key_sequence(self.bundle, [{"key": 3, "phase": 0, "view": view}])
+                self.assertEqual([{"type": 15, "key": 3, "state": 0}], result["published"])
+                self.assertEqual("GARMIN_HELD", result["final_local_states"][3])
 
-    def test_queue_result_codes_do_not_change_ownership(self):
-        for code in (0, 2, 3):
+
+class ViewClassifierTests(unittest.TestCase):
+    """The tri-state classifier is read out of the linked stable_view itself."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bundle = N64.load_build(NEW_BUILD)
+
+    def frame(self, **fixture):
+        return N64.emulate_display(self.bundle, **fixture)
+
+    def test_view_classifier_distinguishes_home_nonhome_and_invalid(self):
+        self.assertEqual("HOME", self.frame(view="valid")["view_class"])
+        self.assertEqual("NON_HOME", self.frame(view="update_prompt")["view_class"])
+        for view in ("empty", "malformed", "cycle", "too_long", "root_mutation"):
+            with self.subTest(view=view):
+                self.assertEqual("INVALID", self.frame(view=view)["view_class"])
+
+    def test_a_hidden_home_node_is_non_home_and_a_trailing_node_is_still_home(self):
+        # hidden_match: the watch face exists but something else is first
+        # visible.  multiple: the watch face is first visible and another node
+        # trails it.  Both lists are structurally sound, so neither is INVALID.
+        self.assertEqual("NON_HOME", self.frame(view="hidden_match")["view_class"])
+        self.assertEqual("HOME", self.frame(view="multiple")["view_class"])
+
+    def test_a_list_that_changes_under_the_scan_is_invalid_not_non_home(self):
+        for view in ("finder_mismatch", "false_first_visible"):
+            with self.subTest(view=view):
+                self.assertEqual("INVALID", self.frame(view=view)["view_class"])
+
+    def test_update_prompt_fixture_is_labelled_an_unproved_placeholder(self):
+        # Task 1's observed_update_prompt_non_home gate FAILED: no callback
+        # identity was ever proved.  This fixture must therefore be visibly a
+        # placeholder in the code, never presented as a proved Task 1 value.
+        source = (ROOT / "tools" / "garmin-firmware" / "emulate_n64_atlas_shell.py").read_text()
+        self.assertIn("UNPROVED_UPDATE_PROMPT_CALLBACK", source)
+        self.assertNotEqual(N64.VIEW_CALLBACK, N64.UNPROVED_UPDATE_PROMPT_CALLBACK)
+        controls = (ROOT / "docs" / "atlas-shell-controls.md").read_text()
+        self.assertIn("observed_update_prompt_non_home", controls)
+
+
+class FiveKeyOwnershipTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.bundle = N64.load_build(NEW_BUILD)
+
+    def test_all_five_home_sequences_are_owned_for_every_usb_state(self):
+        phases = (0, 2, 4, 3, 1)
+        for usb in (0, 2, 3, 4):
+            for key in range(5):
+                with self.subTest(usb=usb, key=key):
+                    result = N64.emulate_key_sequence(
+                        self.bundle,
+                        [{"key": key, "phase": phase, "tick_ms": 1000 + i * 200,
+                          "view": "valid", "usb": usb} for i, phase in enumerate(phases)],
+                    )
+                    self.assertEqual([], result["published"])
+                    self.assertEqual("FLY_PULSE", result["final_local_states"][key])
+
+    def test_usb_mass_storage_no_longer_escapes_ownership(self):
+        # The installed 13.76 behaviour published every phase to Garmin while
+        # cached USB state was 3 or 4.  That escape is gone.
+        for usb in (3, 4):
             result = N64.emulate_key_sequence(self.bundle, [
-                {"key": 1, "phase": 0, "queue_result": code},
-                {"key": 1, "phase": 1, "queue_result": code},
-            ])
-            self.assertEqual([], result["published"])
-            self.assertEqual(N64.KEY_PULSE, result["final_statuses"][1])
+                {"key": 1, "phase": 0, "usb": usb}, {"key": 1, "phase": 1, "usb": usb}])
+            self.assertEqual([], result["published"], f"usb={usb}")
+
+    def test_back_held_no_longer_forces_garmin_ownership(self):
+        # 13.76 failed open whenever BACK's GPIO was down.  BACK is a FlyOS key
+        # now, so holding it must not hand the other four keys to Garmin.
+        BACK_BIT = 1 << 2
+        for key in range(5):
+            with self.subTest(key=key):
+                result = N64.emulate_key_sequence(self.bundle, [
+                    {"key": key, "phase": 0, "gpio_mask": BACK_BIT}])
+                self.assertEqual([], result["published"])
+                self.assertEqual("FLY_HELD", result["final_local_states"][key])
+
+    def test_a_native_owner_is_latched_through_a_later_home(self):
+        # Phase zero saw a non-home view, so every later phase of that physical
+        # sequence belongs to Garmin even once the watch face comes back.
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 4, "phase": 0, "view": "not_home"},
+            {"key": 4, "phase": 2, "view": "valid"},
+            {"key": 4, "phase": 1, "view": "valid"},
+        ])
+        self.assertEqual([{"type": 15, "key": 4, "state": phase} for phase in (0, 2, 1)],
+                         result["published"])
+        self.assertEqual("GARMIN_HELD", result["cases"][0]["local_states"][4])
+
+    def test_a_flyos_owner_is_latched_through_a_later_non_home_view(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 0, "phase": 0, "view": "valid"},
+            {"key": 0, "phase": 2, "view": "not_home"},
+            {"key": 0, "phase": 4, "view": "malformed"},
+            {"key": 0, "phase": 1, "view": "not_home"},
+        ])
+        self.assertEqual([], result["published"])
+
+    def test_every_invalid_or_non_home_phase_zero_replays_the_exact_prologue(self):
+        for view in ("empty", "malformed", "cycle", "too_long", "not_home", "update_prompt"):
+            for key in range(5):
+                with self.subTest(view=view, key=key):
+                    result = N64.emulate_key_sequence(self.bundle, [
+                        {"key": key, "phase": 0, "view": view},
+                        {"key": key, "phase": 2, "view": view},
+                        {"key": key, "phase": 1, "view": view},
+                    ])
+                    self.assertEqual([{"type": 15, "key": key, "state": phase}
+                                      for phase in (0, 2, 1)], result["published"])
+                    self.assertEqual("GARMIN_HELD", result["final_local_states"][key])
+
+    def test_reset_garbage_and_legacy_words_are_normalised_at_phase_zero(self):
+        # 0x0000 reset, 0xFFFF erased, and the three legacy 13.76 encodings all
+        # fail the complement check.  A press at a stable home must recover the
+        # key rather than leaving it stuck.
+        for stale in (0x0000, 0xFFFF, 0xFF00, 0x5EA1, 0x5DA2, 0x1234):
+            with self.subTest(stale=hex(stale)):
+                result = N64.emulate_key_sequence(self.bundle, [
+                    {"key": 2, "phase": 0, "initial_words": {2: stale}},
+                    {"key": 2, "phase": 1},
+                ])
+                self.assertEqual([], result["published"])
+                self.assertEqual("FLY_PULSE", result["final_local_states"][2])
+
+    def test_a_garbage_word_still_fails_open_when_the_view_is_not_home(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 2, "phase": 0, "view": "not_home", "initial_words": {2: 0x1234}},
+            {"key": 2, "phase": 1, "view": "not_home"},
+        ])
+        self.assertEqual([{"type": 15, "key": 2, "state": phase} for phase in (0, 1)],
+                         result["published"])
+
+    def test_queue_null_and_every_queue_result_leave_ownership_alone(self):
+        for code in (0, 2, 3):
+            with self.subTest(queue_result=code):
+                result = N64.emulate_key_sequence(self.bundle, [
+                    {"key": 1, "phase": 0, "queue_result": code},
+                    {"key": 1, "phase": 1, "queue_result": code}])
+                self.assertEqual([], result["published"])
+                self.assertEqual("FLY_PULSE", result["final_local_states"][1])
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 1, "phase": 0, "queue_uninitialized": True},
+            {"key": 1, "phase": 1, "queue_uninitialized": True}])
+        self.assertEqual([], result["published"])
+        self.assertEqual([], result["queue_sends"])
+        self.assertEqual("FLY_PULSE", result["final_local_states"][1])
+
+    def test_ownership_writes_only_ever_touch_the_local_byte(self):
+        # Every write the key worker makes must be one byte at record +0x36.
+        # The mode byte at +0x37 belongs to the system/detach subsystems.
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": key, "phase": phase} for key in range(5) for phase in (0, 2, 1)])
+        self.assertTrue(result["padding_writes"])
+        for address, size, _value in result["padding_writes"]:
+            self.assertEqual(1, size)
+            self.assertIn(address, N64.KEY_PADS)
+
+    def test_a_display_pulse_clear_only_moves_the_local_nibble(self):
+        held = N64.pack_state(N64.FLY_PULSE, N64.SYSTEM_HOME)
+        result = N64.emulate_display(self.bundle, key_words={0: held})
+        self.assertTrue(result["eligible"])
+        # local cleared to IDLE, LIGHT's system-mode nibble untouched.
+        self.assertEqual(N64.pack_state(N64.IDLE, N64.SYSTEM_HOME),
+                         result["key_statuses"][0])
+
+    def test_a_late_phase_after_release_is_never_leaked_to_garmin(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": 3, "phase": 0}, {"key": 3, "phase": 1}, {"key": 3, "phase": 1}])
+        self.assertEqual([], result["published"])
+
+    def test_the_runtime_key_path_stays_inside_the_pinned_stack_ceiling(self):
+        result = N64.emulate_key_sequence(self.bundle, [
+            {"key": key, "phase": phase} for key in range(5) for phase in (0, 2, 4, 3, 1)])
+        self.assertLessEqual(result["maximum_runtime_stack_bytes"], 384)
 
 
 class UsbSequenceTests(unittest.TestCase):

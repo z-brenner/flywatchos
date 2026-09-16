@@ -8,8 +8,8 @@ SECTIONS
     .primary 0x001f6000 :
     {
         KEEP(*(.overlay.entry))
-        *overlay.o(.text.scan_home)
-        *overlay.o(.text.stable_home_node)
+        *overlay.o(.text.scan_view)
+        *overlay.o(.text.stable_view)
         *overlay.o(.text.flyos_key_event)
         *brain64_packed.o(.text.fly_brain64_reconstruct)
         *renderer.o(.text.pixel)

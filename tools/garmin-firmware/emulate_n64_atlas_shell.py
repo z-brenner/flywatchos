@@ -65,7 +65,19 @@ RTC_SECONDS, RTC_PRESCALER = 0x4003D000, 0x4003D004
 BATTERY, USB_MS = 0x1FFCCCD8, 0x1FFC6F25
 KEY_WORKSPACE = 0x1FFDBBC8
 KEY_PADS = tuple(KEY_WORKSPACE + key * 0x38 + 0x36 for key in range(5))
-KEY_IDLE, KEY_OWNED, KEY_PULSE = 0xFF00, 0x5EA1, 0x5DA2
+# The audited halfword is two independent complement-protected bytes: the local
+# (ownership) byte at +0x36 and the mode byte at +0x37.  The target addresses
+# them separately so the ownership and system/detach subsystems can never
+# clobber one another; see state.h.
+KEY_MODES = tuple(pad + 1 for pad in KEY_PADS)
+# Physical key order is LIGHT, START, BACK, DOWN, UP.  The system chord is
+# LIGHT+BACK, and only LIGHT's mode byte carries FlySystemMode.
+KEY_LIGHT, KEY_START, KEY_BACK, KEY_DOWN, KEY_UP = range(5)
+CHORD_KEYS = (KEY_LIGHT, KEY_BACK)
+# The three encodings the installed 13.76 image left behind.  They are kept only
+# so tests can prove a phase-zero press normalises them: all three fail the
+# complement check and none of them is a valid word under this codec.
+LEGACY_IDLE, LEGACY_OWNED, LEGACY_PULSE = 0xFF00, 0x5EA1, 0x5DA2
 BUTTONS = ((GPIOC, 0x800), (GPIOD, 0x400), (GPIOD, 2),
            (GPIOA, 0x100000), (GPIOA, 0x400000))
 CALLEE = (UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
@@ -74,9 +86,21 @@ ARGS = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
 INSTRUCTION_CAP = 3_000_000
 VIEW_FIXTURES = ("valid", "empty", "malformed", "cycle", "too_long", "not_home",
                  "hidden_match", "multiple", "finder_mismatch", "false_first_visible",
-                 "root_mutation")
+                 "root_mutation", "update_prompt")
 ACCEPTED_EVENT_KEYS = {"key", "phase", "tick_ms", "gpio_mask", "view", "usb",
-                       "queue_result", "initial_statuses", "queue_uninitialized"}
+                       "queue_result", "initial_words", "initial_mode",
+                       "queue_uninitialized"}
+
+# UNPROVED PLACEHOLDER -- not a proved callback identity.
+#
+# Task 1's `observed_update_prompt_non_home` gate FAILED: its recorded evidence
+# is literally {"proved_non_home": False, "observed_callback": None}, so nothing
+# anywhere identifies the real native update prompt's first-visible node.  This
+# constant exists only so the classifier can be exercised against a
+# structurally-valid NON_HOME list; the exact value is immaterial to that
+# assertion and must never be cited as evidence.  It stays deliberately
+# grep-able and obviously synthetic.  See docs/atlas-shell-controls.md.
+UNPROVED_UPDATE_PROMPT_CALLBACK = 0x0BADF00D
 
 # --- Complement-protected key-state word codec (flyos/target/fr245_1370_n64_atlas_shell/state.h) ---
 IDLE = FLY_IDLE = 0
@@ -147,6 +171,39 @@ def unpack_state(word: int) -> tuple[int, int] | None:
     """Validated (local, mode) pair, or None if either nibble's complement is wrong."""
     local, mode = read_local(word), read_mode(word)
     return None if local == STATE_INVALID or mode == STATE_INVALID else (local, mode)
+
+
+def state_byte(value: int) -> int:
+    """One complement-protected byte: value in bits 0-3, ~value in bits 4-7.
+
+    pack_state(local, mode) == state_byte(local) | (state_byte(mode) << 8), which
+    is what lets the target store the two nibbles as independent byte writes.
+    """
+    value &= 0xF
+    return value | ((value ^ 15) << 4)
+
+
+def read_state_byte(byte: int) -> int:
+    """The byte's nibble, or STATE_INVALID if its complement is wrong."""
+    nibble = byte & 0xF
+    return nibble if (byte >> 4) & 0xF == (nibble ^ 15) else STATE_INVALID
+
+
+LOCAL_STATE_NAMES = {IDLE: "IDLE", FLY_HELD: "FLY_HELD", FLY_PULSE: "FLY_PULSE",
+                     GARMIN_HELD: "GARMIN_HELD"}
+SYSTEM_MODE_NAMES = {NORMAL: "NORMAL", CHORD_HOLD: "CHORD_HOLD",
+                     SYSTEM_PENDING: "SYSTEM_PENDING", SYSTEM_HOME: "SYSTEM_HOME",
+                     SYSTEM_EXCURSION: "SYSTEM_EXCURSION"}
+
+
+def local_name(byte: int) -> str:
+    """FlyLocalState name for an ownership byte, or INVALID."""
+    return LOCAL_STATE_NAMES.get(read_state_byte(byte), "INVALID")
+
+
+def mode_name(byte: int) -> str:
+    """FlySystemMode name for a mode byte, or INVALID."""
+    return SYSTEM_MODE_NAMES.get(read_state_byte(byte), "INVALID")
 
 
 @lru_cache(maxsize=1)
@@ -377,6 +434,14 @@ def view_nodes(kind: str, node_addresses: tuple[int, ...]) -> list[tuple[int, in
         return [(node0, node1, VIEW_CALLBACK, 0), (node1, 0, 0x12345, 0)]
     if kind == "not_home":
         return [(node0, node1, 0x12345, 0), (node1, 0, VIEW_CALLBACK, 0)]
+    if kind == "update_prompt":
+        # Same structure as not_home -- a native screen sitting above the watch
+        # face -- but with its own grep-able placeholder callback.  See
+        # UNPROVED_UPDATE_PROMPT_CALLBACK: this is NOT a proved identity for the
+        # real update prompt, and the classifier assertion does not depend on
+        # the value, only on the list being a structurally valid NON_HOME one.
+        return [(node0, node1, UNPROVED_UPDATE_PROMPT_CALLBACK, 0),
+                (node1, 0, VIEW_CALLBACK, 0)]
     if kind == "hidden_match":
         return [(node0, node1, VIEW_CALLBACK, 2), (node1, 0, 0x12345, 0)]
     if kind == "cycle":
@@ -783,6 +848,74 @@ def vendor_view_oracle(view: str) -> dict[str, Any]:
         return {"status": "memory_fault", "eligible": None, "detail": str(error)}
 
 
+VIEW_CLASS_NAMES = {0: "INVALID", 1: "NON_HOME"}
+_VIEW_CLASSES: dict[tuple[str, str], str] = {}
+
+
+def classify_view(bundle: Bundle, view: str) -> str:
+    """Run the linked stable_view() itself and name what it returned.
+
+    This is a real observation of the shipped classifier, not a Python model of
+    it: stable_view returns 0 for INVALID, 1 for NON_HOME and the first-visible
+    watch-face node otherwise, so the sentinel decoding here is the target's own
+    contract.  Results are memoised per (build, fixture) because the display
+    path calls this on every frame and the answer cannot vary for a fixture.
+    """
+    require(view in VIEW_FIXTURES, "unknown view fixture")
+    memo = (str(bundle.build), view)
+    if memo in _VIEW_CLASSES:
+        return _VIEW_CLASSES[memo]
+    address = bundle.manifest["symbols"]["stable_view"]["address"]
+    machine = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_LITTLE_ENDIAN)
+    for base, size in ((PRIMARY, 0x1000), (SECONDARY & ~0xFFF, 0x1000),
+                       (0x1FFC0000, 0x80000), (0x70000, 0x1000)):
+        machine.mem_map(base, size)
+    machine.mem_write(PRIMARY, bundle.primary)
+    machine.mem_write(SECONDARY, bundle.secondary)
+    node_addresses = tuple(0x20001000 + index * 0x100 for index in range(9))
+    nodes = view_nodes(view, node_addresses)
+    root = 0xDEAD0000 if view == "malformed" else (nodes[0][0] if nodes else 0)
+    machine.mem_write(VIEW_ROOT, struct.pack("<I", root))
+    for address_, next_node, callback, flags in nodes:
+        machine.mem_write(address_ + 4, struct.pack("<I", next_node))
+        machine.mem_write(address_ + 8, struct.pack("<I", callback))
+        machine.mem_write(address_ + 0x50, struct.pack("<I", flags))
+    root_reads = 0
+
+    def on_read(uc: Uc, _access: int, at: int, _size: int, _value: int, _user: Any) -> None:
+        nonlocal root_reads
+        if at != VIEW_ROOT:
+            return
+        root_reads += 1
+        if root_reads != 3:
+            return
+        if view == "finder_mismatch":
+            uc.mem_write(node_addresses[0] + 8, struct.pack("<I", 0x12345))
+        elif view == "false_first_visible":
+            uc.mem_write(node_addresses[0] + 0x50, struct.pack("<I", 2))
+        elif view == "root_mutation":
+            uc.mem_write(VIEW_ROOT, struct.pack("<I", 0xDEAD0000))
+
+    returned = False
+
+    def stop_return(uc: Uc, at: int, _size: int, _user: Any) -> None:
+        nonlocal returned
+        if at == 0x70000:
+            returned = True
+            uc.emu_stop()
+
+    machine.hook_add(UC_HOOK_MEM_READ, on_read)
+    machine.hook_add(UC_HOOK_CODE, stop_return)
+    machine.reg_write(UC_ARM_REG_SP, STACK_POINTER)
+    machine.reg_write(UC_ARM_REG_LR, 0x70001)
+    machine.emu_start(address | 1, 0, count=100_000)
+    require(returned, "stable_view did not return")
+    node = machine.reg_read(UC_ARM_REG_R0)
+    name = VIEW_CLASS_NAMES.get(node, "HOME")
+    _VIEW_CLASSES[memo] = name
+    return name
+
+
 def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 0,
             fill: int = 0x2A, framebuffer_null: bool = False,
             battery_bits: int = 0x42920000, usb_state: int = 0,
@@ -791,18 +924,18 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
             forced_baseline: int | None = None,
             forced_buttons: int | None = None,
             ui_flags: int | None = None,
-            key_statuses: dict[int, int] | None = None,
+            key_words: dict[int, int] | None = None,
             geometry_only: bool = False) -> dict[str, Any]:
     """Run the linked display hook once and audit everything it touched.
 
     forced_baseline overwrites every neuron's activation at the n64_render
     boundary, and forced_activation then overrides one of them, so a caller can
     isolate exactly one neuron.  ui_flags overwrites the presentation byte the
-    overlay computed, which is how FLY_UI_CHORD_ARMED and FLY_UI_SYSTEM are
-    exercised while nothing on this image sets them yet.  forced_buttons does
-    the same for the key byte: holding BACK makes this overlay pass the frame
-    straight through to Garmin, so BACK's callout cannot be reached through
-    pressed_mask until five-key ownership lands.
+    overlay computed, so a caller can exercise a rendering independently of the
+    state machine that drives it.  forced_buttons does the same for the key byte.
+
+    key_words seeds whole 16-bit key-record words (local byte plus mode byte)
+    before the flush, which is how owned/pulse/system-mode fixtures are set up.
 
     geometry_only trades the audit for speed and is for mask derivation only:
     it keeps the three boundary hooks (dirty, dispatch, n64_render) but drops
@@ -843,11 +976,10 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
         machine.mem_write(RTC_SECONDS, struct.pack("<I", samples[0][0]))
         machine.mem_write(RTC_PRESCALER, struct.pack("<I", samples[0][1]))
     for pad in KEY_PADS:
-        machine.mem_write(pad, struct.pack("<H", KEY_IDLE))
-    for key, status in (key_statuses or {}).items():
-        require(key in (1, 3, 4) and status in (KEY_IDLE, KEY_OWNED, KEY_PULSE),
-                "bad key padding fixture")
-        machine.mem_write(KEY_PADS[key], struct.pack("<H", status))
+        machine.mem_write(pad, struct.pack("<H", pack_state(FLY_IDLE, NORMAL)))
+    for key, word in (key_words or {}).items():
+        require(0 <= key <= 4 and 0 <= word <= 0xFFFF, "bad key word fixture")
+        machine.mem_write(KEY_PADS[key], struct.pack("<H", word))
     node_addresses = tuple(0x20001000 + i * 0x100 for i in range(9))
     nodes = view_nodes(view, node_addresses)
     if view == "malformed": machine.mem_write(VIEW_ROOT, struct.pack("<I", 0xDEAD0000))
@@ -936,7 +1068,7 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
             (SECONDARY <= address and address + size <= 0x1FAC00)
         if allowed_internal: return
         allowed_fixed = {VIEW_ROOT, GPIOD, GPIOA, GPIOC, BATTERY, USB_MS,
-                         RTC_SECONDS, RTC_PRESCALER, *KEY_PADS}
+                         RTC_SECONDS, RTC_PRESCALER, *KEY_PADS, *KEY_MODES}
         allowed_node = any(address == node + offset for node in node_set for offset in (4, 8, 0x50))
         require(address in allowed_fixed or allowed_node, f"read escaped exact allowlist: {address:#x}/{size}")
         data_reads.append([address, size])
@@ -945,7 +1077,13 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
         writes.append([uc.reg_read(UC_ARM_REG_PC), address, size, value])
         if FRAMEBUFFER <= address and address + size <= FRAMEBUFFER + FB_SIZE: write_counts["framebuffer"] += size
         elif STACK_BASE <= address and address + size <= STACK_POINTER: write_counts["stack"] += size
-        elif address in KEY_PADS and size == 2: write_counts["key_padding"] += size
+        # SAFETY ALLOWLIST: the display hook may write the audited key halfword
+        # at record +0x36 as a halfword, or either of its two complement-
+        # protected bytes (+0x36 local, +0x37 mode) on its own.  Nothing wider
+        # and nothing at any other address is permitted.
+        elif (address in KEY_PADS and size == 2) or \
+             (address in KEY_PADS + KEY_MODES and size == 1):
+            write_counts["key_padding"] += size
         else:
             outside_writes.append([address, size, value]); raise ValueError(f"write escaped framebuffer/stack: {address:#x}")
 
@@ -988,6 +1126,7 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
     verified = verify_cells(framebuffer, captured["activation"]) if eligible else 0
     foreground = [(index % 240, index // 240) for index, value in enumerate(framebuffer) if value != 0]
     result = {"eligible": eligible, "view": view, "pressed_mask": pressed_mask,
+              "view_class": classify_view(bundle, view),
               "framebuffer_null": framebuffer_null, "initial_fill": fill,
               "forced_activation": forced_activation, "forced_baseline": forced_baseline,
               "forced_buttons": forced_buttons,
@@ -1020,7 +1159,11 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
     """Execute the patched FA48 key publisher across a stateful event sequence.
 
     Each event accepts key, phase, tick_ms, gpio_mask, view, usb, and
-    queue_result (plus initial_statuses and queue_uninitialized).
+    queue_result (plus initial_words, initial_mode and queue_uninitialized).
+
+    initial_words seeds whole 16-bit key-record words before the event -- used to
+    plant reset, garbage or legacy 13.76 encodings and prove they are normalised.
+    initial_mode seeds LIGHT's system-mode byte on its own.
     """
     require(events, "key sequence must not be empty")
     machine = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_LITTLE_ENDIAN)
@@ -1036,7 +1179,7 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
     machine.mem_write(SECONDARY, bundle.secondary)
     for key in range(5):
         machine.mem_write(KEY_WORKSPACE + key * 0x38, struct.pack("<I", 0x10203040 + key))
-        machine.mem_write(KEY_PADS[key], struct.pack("<H", KEY_IDLE))
+        machine.mem_write(KEY_PADS[key], struct.pack("<H", pack_state(FLY_IDLE, NORMAL)))
 
     symbols = bundle.manifest["symbols"]
     custom_ranges = [(item["address"], item["address"] + item["size"])
@@ -1118,8 +1261,11 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
             (PRIMARY <= address and address + size <= 0x1F63FF) or \
             (SECONDARY <= address and address + size <= 0x1FAC00) or \
             (0xF000 <= address and address + size <= 0x10000) or \
-            address in {VIEW_ROOT, USB_MS, GPIOA, GPIOC, GPIOD, QUEUE_GLOBAL, *KEY_PADS,
-                        KEY_WORKSPACE + current_key * 0x38} or \
+            address in {VIEW_ROOT, USB_MS, GPIOA, GPIOC, GPIOD, QUEUE_GLOBAL,
+                        *KEY_PADS, *KEY_MODES,
+                        KEY_WORKSPACE + current_key * 0x38,
+                        KEY_WORKSPACE + CHORD_KEYS[0] * 0x38,
+                        KEY_WORKSPACE + CHORD_KEYS[1] * 0x38} or \
             any(address == node + offset for node in node_addresses for offset in (4, 8, 0x50))
         require(allowed, f"key read escaped allowlist: {address:#x}/{size}")
         if not (STACK_BASE <= address and address + size <= STACK_POINTER):
@@ -1127,8 +1273,13 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
 
     def on_write(uc: Uc, _access: int, address: int, size: int, value: int, _user: Any) -> None:
         writes.append([uc.reg_read(UC_ARM_REG_PC), address, size, value])
+        # SAFETY ALLOWLIST: the key worker may write its own stack, the audited
+        # key halfword at record +0x36, or either of that halfword's two
+        # complement-protected bytes on its own (+0x36 local, +0x37 mode).
+        # Nothing wider and nothing at any other address is permitted.
         require((STACK_BASE <= address and address + size <= STACK_POINTER) or
-                (address in KEY_PADS and size == 2),
+                (address in KEY_PADS and size == 2) or
+                (address in KEY_PADS + KEY_MODES and size == 1),
                 f"key write escaped stack/padding: {address:#x}/{size}")
 
     machine.hook_add(UC_HOOK_CODE, on_code)
@@ -1144,12 +1295,14 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
         current_key = int(item["key"])
         phase = int(item["phase"])
         require(0 <= current_key <= 4 and 0 <= phase <= 255, "bad key event")
-        for key, status in item.get("initial_statuses", {}).items():
-            key = int(key)
-            status = int(status)
-            require(key in (1, 3, 4) and status in (KEY_IDLE, KEY_OWNED, KEY_PULSE),
-                    "bad initial key status")
-            machine.mem_write(KEY_PADS[key], struct.pack("<H", status))
+        for key, word in item.get("initial_words", {}).items():
+            key, word = int(key), int(word)
+            require(0 <= key <= 4 and 0 <= word <= 0xFFFF, "bad initial key word")
+            machine.mem_write(KEY_PADS[key], struct.pack("<H", word))
+        if "initial_mode" in item:
+            mode = int(item["initial_mode"])
+            require(0 <= mode <= 0xFF, "bad initial mode byte")
+            machine.mem_write(KEY_MODES[CHORD_KEYS[0]], bytes([mode]))
         root_reads = 0
         set_view(str(item.get("view", "valid")))
         machine.mem_write(USB_MS, bytes([int(item.get("usb", 0)) & 0xFF]))
@@ -1184,9 +1337,14 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
                       "published": published[before_publish:],
                       "queue_sends": queue_sends[before_queue:],
                       "statuses": [struct.unpack("<H", machine.mem_read(pad, 2))[0]
-                                   for pad in KEY_PADS]})
+                                   for pad in KEY_PADS],
+                      "local_states": [local_name(machine.mem_read(pad, 1)[0])
+                                       for pad in KEY_PADS],
+                      "system_mode": mode_name(
+                          machine.mem_read(KEY_MODES[CHORD_KEYS[0]], 1)[0])})
     padding_writes = [[address, size, value] for _pc, address, size, value in writes
-                      if address in KEY_PADS]
+                      if address in KEY_PADS + KEY_MODES]
+    modes = [case["system_mode"] for case in cases]
     return {"cases": cases, "published": published, "queue_sends": queue_sends,
             "padding_writes": padding_writes, "reads": reads,
             "maximum_runtime_stack_bytes": STACK_POINTER - minimum_sp,
@@ -1194,7 +1352,17 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
             "executed_cross_segment_branches": [
                 pair for pair in bundle.manifest["stack_audit"]["cross_segment_branches"]
                 if pair[0] in executed],
-            "final_statuses": cases[-1]["statuses"]}
+            "final_statuses": cases[-1]["statuses"],
+            "final_local_states": cases[-1]["local_states"],
+            "final_system_mode": cases[-1]["system_mode"],
+            "system_modes": modes,
+            # SYSTEM_PENDING is the armed-and-verified chord waiting for both
+            # entry sequences to release.  The barrier is observed when the
+            # session commits only after passing through that state, never at
+            # the same event that armed it.
+            "both_release_barrier_observed":
+                "SYSTEM_PENDING" in modes and modes[-1] == "SYSTEM_HOME" and
+                modes.index("SYSTEM_PENDING") < modes.index("SYSTEM_HOME")}
 
 
 ACCEPTED_TRANSITION_KEYS = {"from", "to", "view"}
