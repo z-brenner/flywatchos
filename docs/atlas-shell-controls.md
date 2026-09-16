@@ -115,6 +115,27 @@ normalised by the next press on that key. Because only that one byte is
 touched, this cleanup can never erase a global latch or disturb another key's
 in-progress sequence.
 
+## Not yet implemented: the deliberate Garmin system session
+
+The design's LIGHT+BACK chord, and the `SYSTEM_PENDING`/`SYSTEM_HOME`/
+`SYSTEM_EXCURSION` session it commits to, are **not in this build**. LIGHT's
+mode byte is therefore always `NORMAL`, and `FLY_UI_CHORD_ARMED` and
+`FLY_UI_SYSTEM` are never set — the renderer can draw both banners, but nothing
+asks it to.
+
+This is a flash-allocation decision, not a design change. The chord and session
+were implemented and pass their tests, but the linked payload came to 3066 of
+the pinned 3071 bytes. The total fits; the per-region caps do not fall out of
+it. `.primary` would have to land inside a six-byte window for `.secondary` to
+stay under 2048, and the only function split that hits it leaves `.secondary`
+at exactly 2048 and five bytes of slack overall — which would leave the USB
+detach work with nowhere to go. The implementation is preserved on the
+`task3-tierB-chord-over-budget` branch.
+
+Until it lands, the only route from the FlyOS home to ordinary Garmin
+navigation is a screen that classifies as non-home, because a non-home
+first-visible node bypasses both the renderer and ownership.
+
 ## Constraints this path holds
 
 - No writable static storage, no heap, no peripheral-bus transaction, no
