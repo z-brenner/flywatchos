@@ -44,6 +44,13 @@ remain visible without a later display transfer. A charging modal could also
 remain first-visible. Current evidence cannot distinguish those paths or
 establish the exact live cause.
 
+The user's additional live observation on 2026-09-16 narrows the symptom:
+after USB removal, pressing top-right START made no immediate visible change,
+but the FlyOS face returned by itself after **more than ten seconds**. The
+charger view therefore is delayed, not permanently stuck. The observation
+does not identify whether native view teardown, event scheduling, or display
+submission accounts for that delay.
+
 ## Current host observation
 
 On 2026-09-16, read-only PowerShell checks found one present Garmin USB

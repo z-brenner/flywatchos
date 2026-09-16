@@ -1097,3 +1097,22 @@
 - Corrected the UX diagnosis after checking the exact linked renderer source:
   `n64_render` discards `usb_ms` and draws no charging label. The stale screen
   report instead remains an unresolved native-view/display-lifecycle issue.
+- The user observed that, after unplugging USB, START initially made no
+  visible change but the FlyOS face returned on its own after more than ten
+  seconds. This narrows the failure to a delayed transition; it does not
+  identify the native view/flush cause.
+- Tested an offline source-level five-key rebuild. It fit the flash intervals
+  but raised the full-frame stack peak from 384 to 392 bytes, so rejected it.
+  An exact in-place patch of the prior 13.76 primary instead changed 11 key
+  instruction bytes with the original display code and 384-byte stack peak.
+  Private instruction emulation passed 34 key/view cases and one frame.
+- Built a create-new, offline-only synthetic 13.80 five-key candidate and
+  13.81 official-code restore in ignored quarantine. Each is 5,120,675 bytes;
+  SHA-256 values are respectively
+  `2054be63e12531c61c7417156fa208b27db82af70b518dbf9fd0f8df1e2a7dbd`
+  and `b62be4c422dfe03f83fef30139557143ad285abc18b733899801dba16ffd9f5b`.
+  Exact reconstruction, full-image application checks, helper identity, and
+  package tests passed. No watch write occurred. Live decision remains
+  **NO-GO**: no prompt charging redraw fix, no completed-tap indication for
+  LIGHT/BACK, lost native HOME backlight action, and incomplete key-sequence
+  ownership. See `docs/fivekey-1380-offline-candidate.md`.
