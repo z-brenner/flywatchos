@@ -20,6 +20,44 @@ OLD_N64 = importlib.util.module_from_spec(OLD_SPEC)
 sys.modules[OLD_SPEC.name] = OLD_N64
 OLD_SPEC.loader.exec_module(OLD_N64)
 
+# Module-level build fixture: both targets' build/ directories are generated,
+# gitignored output (see .gitignore's **/build/) -- a clean checkout has
+# neither, and nothing else in this task produces flyos/target/.../build/.
+# Build each target exactly once, into its own temp sandbox via -BuildRoot,
+# and share the resulting Bundle across every TestCase below rather than
+# depending on (or repeatedly rebuilding into) an in-tree build directory.
+NEW_SANDBOX = None
+OLD_SANDBOX = None
+NEW_BUILD = None
+OLD_BUILD = None
+
+
+def _build_sandbox(target_dir, prefix):
+    sandbox = tempfile.TemporaryDirectory(prefix=prefix)
+    build = pathlib.Path(sandbox.name) / "build"
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         str(target_dir / "build.ps1"), "-BuildRoot", str(build)],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if completed.returncode:
+        sandbox.cleanup()
+        raise RuntimeError(completed.stdout + completed.stderr)
+    return sandbox, build
+
+
+def setUpModule():
+    global NEW_SANDBOX, OLD_SANDBOX, NEW_BUILD, OLD_BUILD
+    NEW_SANDBOX, NEW_BUILD = _build_sandbox(TARGET, "flyos-n64-atlas-shell-suite-")
+    OLD_SANDBOX, OLD_BUILD = _build_sandbox(OLD_TARGET, "flyos-n64-controls-suite-")
+
+
+def tearDownModule():
+    if NEW_SANDBOX is not None:
+        NEW_SANDBOX.cleanup()
+    if OLD_SANDBOX is not None:
+        OLD_SANDBOX.cleanup()
+
 
 class ScaffoldTests(unittest.TestCase):
     def test_scaffold_starts_from_exact_controls_sources(self):
@@ -73,23 +111,30 @@ class StateCodecTests(unittest.TestCase):
             self.assertEqual(expected, N64.state_oracle_unpack(word), hex(word))
 
 
+class VendorViewOracleTests(unittest.TestCase):
+    """vendor_view_oracle has no on_read hook of its own, so it cannot model
+    the mid-scan mutations finder_mismatch/false_first_visible/root_mutation
+    -- it must reject those fixtures rather than silently running them as a
+    plain "valid" scan under the wrong name."""
+
+    def test_rejects_fixtures_the_hookless_oracle_cannot_model(self):
+        for view in ("finder_mismatch", "false_first_visible", "root_mutation"):
+            with self.subTest(view=view):
+                with self.assertRaisesRegex(ValueError, "unknown vendor fixture"):
+                    N64.vendor_view_oracle(view)
+
+    def test_accepts_every_real_vendor_fixture(self):
+        for view in N64.VENDOR_FIXTURES:
+            with self.subTest(view=view):
+                result = N64.vendor_view_oracle(view)
+                self.assertIn("status", result)
+
+
 class TargetBuildTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.sandbox = tempfile.TemporaryDirectory(prefix="flyos-n64-atlas-shell-focused-")
-        cls.build = pathlib.Path(cls.sandbox.name) / "build"
-        completed = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-             str(TARGET / "build.ps1"), "-BuildRoot", str(cls.build)],
-            cwd=ROOT, capture_output=True, text=True,
-        )
-        if completed.returncode:
-            raise RuntimeError(completed.stdout + completed.stderr)
+        cls.build = NEW_BUILD
         cls.bundle = N64.load_build(cls.build)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.sandbox.cleanup()
 
     def test_exact_layout_hooks_stack_and_state_header_are_recorded(self):
         manifest = self.bundle.manifest
@@ -114,7 +159,7 @@ class TargetBuildTests(unittest.TestCase):
         self.assertTrue(".forbidden" not in sections or sections[".forbidden"]["size"] == 0)
 
     def test_segments_are_byte_identical_to_the_old_controls_build(self):
-        old_bundle = OLD_N64.load_build(OLD_TARGET / "build")
+        old_bundle = OLD_N64.load_build(OLD_BUILD)
         self.assertEqual(old_bundle.primary, self.bundle.primary)
         self.assertEqual(old_bundle.secondary, self.bundle.secondary)
         self.assertEqual(old_bundle.hook, self.bundle.hook)
@@ -129,8 +174,8 @@ class DisplayByteIdentityTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.bundle = N64.load_build(TARGET / "build")
-        cls.old_bundle = OLD_N64.load_build(OLD_TARGET / "build")
+        cls.bundle = N64.load_build(NEW_BUILD)
+        cls.old_bundle = OLD_N64.load_build(OLD_BUILD)
 
     def test_display_framebuffers_match_the_old_target_for_every_fixture(self):
         fixtures = [{}, {"pressed_mask": 1}, {"pressed_mask": 2}, {"pressed_mask": 8},
@@ -158,7 +203,7 @@ class DisplayByteIdentityTests(unittest.TestCase):
 class KeySequenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.bundle = N64.load_build(TARGET / "build")
+        cls.bundle = N64.load_build(NEW_BUILD)
 
     def test_owned_start_down_up_sequences_never_reach_garmin_publisher(self):
         for key in (1, 3, 4):
@@ -231,13 +276,15 @@ class KeySequenceTests(unittest.TestCase):
 class UsbSequenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.bundle = N64.load_build(TARGET / "build")
+        cls.bundle = N64.load_build(NEW_BUILD)
 
-    def test_bare_transition_has_no_hook_site_yet_and_no_queued_redraw(self):
-        result = N64.emulate_usb_sequence(self.bundle, [{"from": 3, "to": 2, "view": "valid"}])
-        self.assertFalse(result["hook_sites_present"])
+    def test_single_transition_reflects_a_real_emulated_display_flush(self):
+        # usb_ms/eligible are read back from the actual n64_render capture
+        # (see emulate_display), not declared -- a real regression in the
+        # underlying display emulation would flip these.
+        result = N64.emulate_usb_sequence(self.bundle, [{"from": 3, "to": 2, "view": "valid"}],
+                                          initial_state=3)
         self.assertEqual(1, len(result["steps"]))
-        self.assertEqual([], result["steps"][0]["queue_sends"])
         self.assertEqual(0, result["steps"][0]["usb_ms"])
         self.assertTrue(result["steps"][0]["eligible"])
 
@@ -246,13 +293,31 @@ class UsbSequenceTests(unittest.TestCase):
             result = N64.emulate_usb_sequence(self.bundle, [{"from": 0, "to": target_state}])
             self.assertEqual(int(target_state in (3, 4)), result["steps"][0]["usb_ms"])
 
-    def test_multiple_transitions_are_recorded_in_order(self):
+    def test_coherent_chain_is_accepted_and_recorded_in_order(self):
         result = N64.emulate_usb_sequence(self.bundle, [
             {"from": 0, "to": 3, "view": "valid"},
             {"from": 3, "to": 2, "view": "valid"},
         ])
         self.assertEqual([(0, 3), (3, 2)],
                          [(step["from"], step["to"]) for step in result["steps"]])
+
+    def test_incoherent_chain_is_rejected(self):
+        # step 1's "from" (9) does not match step 0's "to" (3): the sequence
+        # does not describe one continuous device history and must be
+        # rejected rather than silently recorded.
+        with self.assertRaisesRegex(ValueError, "incoherent usb transition"):
+            N64.emulate_usb_sequence(self.bundle, [{"from": 0, "to": 3}, {"from": 9, "to": 2}])
+
+    def test_step_zero_from_must_match_declared_initial_state(self):
+        with self.assertRaisesRegex(ValueError, "incoherent usb transition"):
+            N64.emulate_usb_sequence(self.bundle, [{"from": 3, "to": 2}])  # default initial_state=0
+        # Passing the matching initial_state explicitly is accepted.
+        result = N64.emulate_usb_sequence(self.bundle, [{"from": 3, "to": 2}], initial_state=3)
+        self.assertEqual(1, len(result["steps"]))
+
+    def test_unknown_transition_field_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "unknown usb transition field"):
+            N64.emulate_usb_sequence(self.bundle, [{"from": 0, "to": 3, "queue_result": 0}])
 
     def test_empty_sequence_is_rejected(self):
         with self.assertRaises(ValueError):

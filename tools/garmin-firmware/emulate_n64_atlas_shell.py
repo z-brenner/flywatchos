@@ -14,6 +14,7 @@ that later tasks build on.
 from __future__ import annotations
 
 import argparse
+import atexit
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
@@ -22,6 +23,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -71,6 +73,8 @@ INSTRUCTION_CAP = 3_000_000
 VIEW_FIXTURES = ("valid", "empty", "malformed", "cycle", "too_long", "not_home",
                  "hidden_match", "multiple", "finder_mismatch", "false_first_visible",
                  "root_mutation")
+ACCEPTED_EVENT_KEYS = {"key", "phase", "tick_ms", "gpio_mask", "view", "usb",
+                       "queue_result", "initial_statuses", "queue_uninitialized"}
 
 # --- Complement-protected key-state word codec (flyos/target/fr245_1370_n64_atlas_shell/state.h) ---
 IDLE = FLY_IDLE = 0
@@ -102,7 +106,14 @@ def require(condition: bool, message: str) -> None:
 
 
 def pack_state(local: int, mode: int) -> int:
-    """Exact Python mirror of state.h's fly_state_word(local, mode)."""
+    """Exact Python mirror of state.h's fly_state_word(local, mode).
+
+    C's fly_state_word takes uint8_t parameters, so passing e.g. 300 there
+    truncates to 300 & 0xFF = 44 before any arithmetic happens. Mask here too
+    so this stays an exact mirror instead of silently diverging above 15.
+    """
+    local &= 0xFF
+    mode &= 0xFF
     return (local | ((local ^ 15) << 4) | (mode << 8) | ((mode ^ 15) << 12)) & 0xFFFF
 
 
@@ -130,6 +141,7 @@ def unpack_state(word: int) -> tuple[int, int] | None:
 def _state_oracle_binary() -> Path:
     """Compile a tiny host program against the real state.h as a byte-for-byte oracle."""
     directory = Path(tempfile.mkdtemp(prefix="flyos-n64-state-oracle-"))
+    atexit.register(shutil.rmtree, directory, ignore_errors=True)
     source = directory / "state_oracle.c"
     executable = directory / ("state_oracle.exe" if os.name == "nt" else "state_oracle")
     source.write_text(
@@ -535,8 +547,22 @@ def verify_cells(framebuffer: bytes, activation: list[int]) -> int:
     return 64
 
 
+VENDOR_FIXTURES = ("valid", "empty", "malformed", "cycle", "too_long", "not_home",
+                   "hidden_match", "multiple")
+
+
 def vendor_view_oracle(view: str) -> dict[str, Any]:
-    """Run only the pinned stock 13.70 walkers as an offline comparison oracle."""
+    """Run only the pinned stock 13.70 walkers as an offline comparison oracle.
+
+    This oracle calls the vendor's own view-finder/first-visible walkers
+    directly, with no on_read hook of its own, so it cannot model a mid-scan
+    root/callback/flags mutation the way emulate_display's on_read does.
+    finder_mismatch/false_first_visible/root_mutation are therefore not
+    valid fixtures here even though view_nodes() itself accepts them for the
+    hooked entry points -- reject them explicitly rather than silently
+    emulating a plain "valid" scan under the wrong fixture name.
+    """
+    require(view in VENDOR_FIXTURES, "unknown vendor fixture")
     node_addresses = tuple(0x20001000 + i * 0x100 for i in range(9))
     nodes = view_nodes(view, node_addresses)
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_LITTLE_ENDIAN)
@@ -862,6 +888,8 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
     callee_seed = {reg: 0x51510000 + index * 0x10101
                    for index, reg in enumerate(CALLEE)}
     for item in events:
+        require(set(item) <= ACCEPTED_EVENT_KEYS,
+                f"unknown key event field(s): {set(item) - ACCEPTED_EVENT_KEYS}")
         current_event = item
         current_key = int(item["key"])
         phase = int(item["phase"])
@@ -919,31 +947,52 @@ def emulate_key_sequence(bundle: Bundle, events: list[dict[str, Any]]) -> dict[s
             "final_statuses": cases[-1]["statuses"]}
 
 
-def emulate_usb_sequence(bundle: Bundle, transitions: list[dict[str, Any]]) -> dict[str, Any]:
-    """Execute both proved USB hook sites plus the bounded retry callback.
+ACCEPTED_TRANSITION_KEYS = {"from", "to", "view"}
 
+
+def emulate_usb_sequence(bundle: Bundle, transitions: list[dict[str, Any]],
+                          *, initial_state: int = 0) -> dict[str, Any]:
+    """Apply each USB cache-state change against the unmodified display hook; no detach hook sites exist yet.
+
+    The brief's contract for this function is: "Execute both proved USB hook
+    sites plus the bounded retry callback." That sentence remains the
+    documented Task 5 obligation, not a description of this task's behavior.
     Task 1's feasibility run left post_unlock_hook_site,
     usb_3_and_4_detach_convergence, and bounded_retry_context as open,
     unproved gates, and this fork's hook.S/overlay.c are still byte-identical
     to the controls target -- no USB detach hook sites are wired in yet.
     Task 5 adds flyos_usb_teardown_mark/flyos_usb_worker_unlocked/
-    flyos_detach_retry and extends this exact function to invoke them. Until
-    then this harness applies each transition's USB cache-state change
-    against the unmodified display hook and records the honest baseline: no
-    hook fires yet, so no redraw is queued from a bare USB transition.
+    flyos_detach_retry and extends this exact function to invoke them.
+
+    Until then this harness applies each transition's USB cache-state change
+    against the unmodified display hook and reports only what it can
+    honestly observe from that real emulated flush: usb_ms/eligible/
+    dirty_calls. It does not report a queue-send observation, because no
+    code path this function currently exercises can reach the queue-send
+    call -- emulate_display's own allowlist would already raise before
+    returning if it somehow did. Each step's "from" must equal the previous
+    step's "to" (and step 0's "from" must equal `initial_state`, default 0),
+    so a passed-in sequence is at least internally coherent before Task 5
+    builds real transition/retry semantics on top of it.
     """
     require(transitions, "usb transition sequence must not be empty")
+    require(0 <= initial_state <= 255, "bad initial usb state")
     steps = []
-    for transition in transitions:
+    expected_from = initial_state
+    for index, transition in enumerate(transitions):
+        require(set(transition) <= ACCEPTED_TRANSITION_KEYS,
+                f"unknown usb transition field(s): {set(transition) - ACCEPTED_TRANSITION_KEYS}")
         source_state = int(transition["from"])
         target_state = int(transition["to"])
         require(0 <= source_state <= 255 and 0 <= target_state <= 255, "bad usb transition state")
+        require(source_state == expected_from,
+                f"incoherent usb transition at step {index}: from={source_state}, expected {expected_from}")
+        expected_from = target_state
         view = str(transition.get("view", "valid"))
         display = emulate_display(bundle, view=view, usb_state=target_state)
         steps.append({"from": source_state, "to": target_state, "view": view,
                       "usb_ms": display.get("usb_ms"), "eligible": display["eligible"],
                       "dirty_calls": display["dirty_calls"],
-                      "queue_sends": [],
                       "framebuffer_sha256": display["framebuffer_sha256"]})
     return {"steps": steps, "hook_sites_present": False}
 
@@ -979,8 +1028,7 @@ def generate_report(build: Path, report_path: Path, preview_path: Path | None) -
             {"key": key, "phase": 1}])
     report = {"schema": "flyos.fr245.n64-atlas-shell-emulation.v1", "cases": cases,
               "controls": controls,
-              "vendor_oracle": {name: vendor_view_oracle(name) for name in VIEW_FIXTURES
-                                if name not in ("finder_mismatch", "false_first_visible", "root_mutation")},
+              "vendor_oracle": {name: vendor_view_oracle(name) for name in VENDOR_FIXTURES},
               "palette": {"allowed_native_bytes": [0, 12, 42, 51, 56, 63],
                           "saturated_fixture": {"neuron": 56, "activation": 700,
                                                 "pixels_present": sorted(set(saturated["framebuffer"]))}},
