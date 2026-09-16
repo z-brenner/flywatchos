@@ -89,20 +89,26 @@ The interface deliberately looks like a lab readout rather than a cartoon
 smartwatch. The display renderer and network model are reproducible on the host
 before they are compiled into the constrained target overlay.
 
-## Controls under investigation
+## The next controls build
 
-| Physical control | Instrument label | Intended neural effect | Current limitation |
+The installed 13.74 experiment still lets some Garmin key subscribers navigate
+away from the neural face. A synthetic 13.76 successor is now built and verified
+offline, but has not been staged on hardware. It intercepts controlled keys
+before Garmin's shared publisher and keeps an explicit system escape.
+
+| Physical control | Instrument label | Intended neural effect | Ownership policy |
 |---|---|---|---|
-| Top-left | `LIGHT / LUX` | Environmental stimulus channel | Ambient-light telemetry is not yet bound |
-| Middle-left | `UP / WAKE` | Raise arousal | Sampled while the overlay owns the view |
-| Bottom-left | `DOWN / CALM` | Lower arousal | Sampled while the overlay owns the view |
-| Top-right | `START / PULSE` | Inject a neural pulse | Garmin also uses START for system/update confirmation |
-| Bottom-right | `BACK / SYS` | System escape | Intentionally passes to GarminOS immediately |
+| Top-left | `LIGHT>LUX` | Light stimulus placeholder | Passes to Garmin so the backlight remains available |
+| Middle-left | `UP>PULSE` | Raise arousal | Captured only on the stable FlyOS home view |
+| Bottom-left | `DOWN>CALM` | Lower arousal | Captured only on the stable FlyOS home view |
+| Top-right | `START>BURST` | Inject a strong neural burst | Captured on FlyOS; native on system/update views |
+| Bottom-right | `BACK>SYSTEM` | System escape | Always passes to GarminOS |
 
-Some Garmin screens can still replace the neural view. That behavior is real and
-currently undesirable: the overlay observes a bounded Garmin view state instead
-of owning the complete UI stack. Fixing view ownership and making every button's
-neural effect obvious is the next interface milestone.
+The 13.76 design latches FlyOS ownership for a complete press sequence, requests
+an immediate redraw through Garmin's nonblocking UI queue, and retains short taps
+for one visible frame. Holding BACK while pressing another key forces that key
+to Garmin. Every non-home, malformed, USB-update, charging, notification, or
+menu view also retains native controls.
 
 ## Signal path
 
@@ -168,8 +174,9 @@ local ARM toolchain plus byte-pinned firmware evidence that is not distributed h
 - [x] Execute bounded custom ARM code inside the Garmin application
 - [x] Render a full-screen interactive neural display
 - [x] Expand from 32 to 64 directly mapped neurons
-- [ ] Keep the neural instrument in control of the home view
-- [ ] Make every button effect visible and legible
+- [x] Verify guarded home-view button ownership offline
+- [x] Make every neural button effect visible and legible offline
+- [ ] Confirm the guarded controls build on hardware
 - [ ] Bind safe heart-rate, motion, and charging observations
 - [ ] Strengthen persistent identity across restarts
 - [ ] Establish a dependable nonboot recovery path

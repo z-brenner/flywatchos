@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Candidate1369', 'ForwardOverlay1371', 'ForwardRestore1372', 'FullscreenOverlay1372', 'FullscreenRestore1373', 'NeuralSpecimenN64Overlay1374', 'NeuralSpecimenN64Restore1375')]
+    [ValidateSet('Candidate1369', 'ForwardOverlay1371', 'ForwardRestore1372', 'FullscreenOverlay1372', 'FullscreenRestore1373', 'NeuralSpecimenN64Overlay1374', 'NeuralSpecimenN64Restore1375', 'NeuralSpecimenN64ControlsOverlay1376', 'NeuralSpecimenN64ControlsRestore1377')]
     [string]$Mode = 'Candidate1369',
     [ValidatePattern('^[A-Z]$')]
     [string]$DriveLetter = 'D',
@@ -19,6 +19,14 @@ $BlockedN64Artifacts = @{
     NeuralSpecimenN64Restore1375 = @{
         Source = 'artifacts\firmware\quarantine\Forerunner245_1375-official-payload-restore-n64.gcd.analysis-only.DO_NOT_INSTALL'
         Sha256 = 'CCD2A29C51A41A436111239C7181E1CB0CEA1F2FAC1C48D600FFF6DEC103E5DA'
+    }
+    NeuralSpecimenN64ControlsOverlay1376 = @{
+        Source = 'artifacts\firmware\quarantine\Forerunner245_1376-flyos-neural-specimen-n64-controls.gcd.analysis-only.DO_NOT_INSTALL'
+        Sha256 = '9DC61B99CEBACC50F121B9145DDFAB21445344FAC6F70A4AB68DDE205FCF84DE'
+    }
+    NeuralSpecimenN64ControlsRestore1377 = @{
+        Source = 'artifacts\firmware\quarantine\Forerunner245_1377-official-payload-restore-n64-controls.gcd.analysis-only.DO_NOT_INSTALL'
+        Sha256 = '724C8FE8BDAFD6857116CBB28951E9F2934BADAB09616A716E450E6676FB3C4D'
     }
 }
 if ($BlockedN64Artifacts.ContainsKey($Mode)) {

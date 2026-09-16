@@ -948,3 +948,59 @@
 - Re-enabled the staging denylist before eject. Both the N64 candidate and restore modes are again blocked from repeat staging; the locked script SHA-256 is `d7aecb958c37504a4536be73139bae32c2ba297773399e61dbe2ee7da5e4aed5`.
 - Requested Windows safe eject and confirmed that `D:` was no longer mounted. Installation has not yet been observed; no host reset or button action was performed.
 - Sanitized staging receipt: `artifacts/analysis/neural-specimen-n64-live-staging-1374.json`; SHA-256 `357a1178fc8ca1cfbfba0766f4cc9446b5b3fa77120a69e59734719dc45a7021`. Hardware identifiers remain local and are omitted from the receipt.
+
+## 2026-09-15 - N64 controls and round-screen redesign completed offline
+
+- Traced the pinned key-event builder at `0x0000fa48` and confirmed that the
+  downstream publisher invokes 13 independent subscribers without using their
+  return values. View-level consumption therefore cannot prevent Garmin
+  navigation. The controls target intercepts before publication with a six-byte
+  Thumb branch and replays the exact original prologue for native events.
+- START, DOWN, and UP are owned only for a stable, dual-scanned home view. LIGHT
+  and BACK always pass; confirmed USB mass-storage states, non-home views, and a
+  BACK-held escape chord pass all keys. Ownership is latched through release.
+  Every new press first clears a stale ownership value, fixing an independently
+  found interrupted-sequence hazard.
+- Owned presses request the watch face's stock `0x50` redraw event through the
+  existing UI queue with timeout zero. The key worker never draws directly.
+  Exact 16-bit status values use only the audited unused final halfwords of the
+  three controlled-key records.
+- Reworked the face as a tapered 8 by 8 neural field in an angular fly-head
+  contour with antennas. The footer now names effects (`START>BURST`,
+  `DOWN>CALM`, `UP>PULSE`, `LIGHT>LUX`) and the idle prompt is `PRESS>KEYS`.
+  A visual audit across idle, held, and acknowledgement states found bounding
+  box `x=52..188`, `y=22..208` and maximum radius 98.509 inside the required
+  100-pixel circle. Each controlled input lights its mapped neuron amber and
+  produces distinct downstream activity.
+- Packed the unchanged 90-edge Brain64 graph into 16-bit edge words for the
+  target only. Exhaustive differential verification across 4,704 fixtures
+  produced 658,560 byte-identical output bytes, SHA-256
+  `1d08e04d5597a7ddcabf94c82c9e2bb200aba223713ab7b22a82425336ef2105`.
+- Final controls build: display hook 4 bytes, key hook 6 bytes, primary 996 of
+  1,023 usable bytes, secondary 2,044 of 2,048 bytes, and exact 384-byte maximum
+  target-owned stack chain. Manifest SHA-256 is
+  `28243fab77447f1ce12ad05680878868afe4482dd7465ee3a12c17ae2e6322f8`.
+- A fresh independent controls run passed 19/19 tests in 176.377 seconds. It
+  covers hook bytes, original publisher replay, ownership and escape sequences,
+  stale-latch recovery, nonblocking queue failures, exact reads and confined
+  writes, stack/register ABI, every cross-segment branch, the host Brain64
+  oracle, all 64 direct cells, six reviewed colors, and strict round geometry.
+- Created an immutable controls construction decision, SHA-256
+  `15bc970f3277ffb61f2562ac52fc5f779f9fe7e47c116f7f79bf4fba025d1f54`,
+  which chains to the prior full N64 decision and allows only offline local
+  quarantine construction. Live staging remains false.
+- Constructed synthetic 13.76 candidate and synthetic 13.77 official-code
+  restore packages offline with create-new semantics. Both are 5,120,675 bytes.
+  Candidate SHA-256:
+  `9dc61b99cebacc50f121b9145ddfab21445344fac6f70a4ab68dde205fcf84de`.
+  Restore SHA-256:
+  `724c8fe8bdafd6857116cbb28951e9f2934badab09616a716e450e6676fb3c4d`.
+  Exact reconstruction, record layout, official helper identity, decoded
+  additive sum, five checkpoints, complete official-code restore, and confirmed
+  application-side full-image checks pass. A fresh package suite passed 10/10
+  tests in 54.379 seconds.
+- The live staging tool explicitly blocks both controls modes, names, paths,
+  basenames, and hashes before package or device access. No watch, removable
+  volume, updater directory, or `GUPDATE.GCD` was accessed during this work.
+  Feasibility remains **YELLOW** because recovery still requires a booting
+  GarminOS/USB updater and no nonboot recovery path is known.
