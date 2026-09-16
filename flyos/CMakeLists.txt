@@ -50,10 +50,18 @@ target_include_directories(flyos-brain64-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DI
 flyos_strict_warnings(flyos-brain64-tests)
 add_test(NAME flyos-brain64-tests COMMAND flyos-brain64-tests)
 
+# The target's packed Brain64 is linked beside the shared one with its public
+# symbols renamed, so one host process can prove the two agree byte for byte.
+set(FLYOS_PACKED_BRAIN64
+    ${CMAKE_CURRENT_SOURCE_DIR}/target/fr245_1370_n64_atlas_shell/brain64_packed.c)
+set_source_files_properties(${FLYOS_PACKED_BRAIN64} PROPERTIES COMPILE_DEFINITIONS
+    "fly_brain64_seed=packed_brain64_seed;fly_brain64_step=packed_brain64_step;fly_brain64_reconstruct=packed_brain64_reconstruct;fly_brain64_level=packed_brain64_level;fly_brain64_state=packed_brain64_state")
+
 add_executable(flyos-neural-specimen-tests
     tests/test_neural_specimen.c
     display/neural_specimen.c
     fly/brain64.c
+    ${FLYOS_PACKED_BRAIN64}
 )
 target_include_directories(flyos-neural-specimen-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 flyos_strict_warnings(flyos-neural-specimen-tests)

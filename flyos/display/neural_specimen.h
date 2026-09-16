@@ -3,11 +3,12 @@
 
 #include <stdint.h>
 
+#include "display/n64_atlas_layout.h"
 #include "fly/brain64.h"
 
 #define FLY_NEURAL_SPECIMEN_WIDTH 240u
 #define FLY_NEURAL_SPECIMEN_HEIGHT 240u
-#define FLY_NEURAL_SPECIMEN_CELLS 64u
+#define FLY_NEURAL_SPECIMEN_CELLS FLY_N64_ATLAS_NEURONS
 #define FLY_NEURAL_SPECIMEN_FRAMEBUFFER_BYTES \
     (FLY_NEURAL_SPECIMEN_WIDTH * FLY_NEURAL_SPECIMEN_HEIGHT)
 
@@ -32,18 +33,10 @@ enum {
 };
 #endif
 
-typedef struct FlyNeuralSpecimenPoint {
-    uint8_t x;
-    uint8_t y;
-    uint8_t width;
-    uint8_t height;
-} FlyNeuralSpecimenPoint;
-
-extern const FlyNeuralSpecimenPoint
-    fly_neural_specimen_points[FLY_NEURAL_SPECIMEN_CELLS];
-
+/* "LIGHT // LUX" and friends, or "" when no physical key is down. */
 const char *fly_neural_specimen_button_label(uint8_t buttons);
-const char *fly_neural_specimen_unavailable_label(unsigned rail);
+/* "REST", "MOVE", "AROUSE" or "QUIET"; unknown states read as "REST". */
+const char *fly_neural_specimen_state_label(uint8_t state);
 
 void fly_neural_specimen_render(
     uint8_t framebuffer[FLY_NEURAL_SPECIMEN_FRAMEBUFFER_BYTES],

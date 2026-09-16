@@ -2,13 +2,15 @@
 """Build-gate and Unicorn proof for the offline FR245 13.70 N64 Atlas Shell target.
 
 This is an immutable fork of emulate_neural_specimen_n64_controls.py. The
-target's hook.S/overlay.c/renderer.c/brain64_packed.c sources are byte-for-byte
-identical to fr245_1370_neural_specimen_n64_controls until a later task
-intentionally changes them (see docs/superpowers/specs/2026-09-15-flyos-n64-atlas-shell-design.md).
+target's hook.S and brain64_packed.c are still byte-for-byte identical to
+fr245_1370_neural_specimen_n64_controls; renderer.c and overlay.c have since
+been rewritten around the 64-neuron Drosophila atlas
+(see docs/superpowers/specs/2026-09-15-flyos-n64-atlas-shell-design.md).
 This module additionally hosts the complement-protected key-state word codec
-(pack_state/unpack_state, shared in semantics with flyos/target/fr245_1370_n64_atlas_shell/state.h)
-and the extended emulate_key_sequence/emulate_usb_sequence harness contract
-that later tasks build on.
+(pack_state/unpack_state, shared in semantics with flyos/target/fr245_1370_n64_atlas_shell/state.h),
+the extended emulate_key_sequence/emulate_usb_sequence harness contract that
+later tasks build on, and build_atlas_manifest, which derives the 64
+pairwise-disjoint neuron masks from the linked binary itself.
 """
 
 from __future__ import annotations
@@ -94,6 +96,16 @@ DETACH_RETRY3 = 4
 DETACH_QUEUED = 5
 DETACH_EXHAUSTED = 6
 STATE_INVALID = 0xFF
+
+# --- Renderer presentation flags (flyos/target/fr245_1370_n64_atlas_shell/renderer.h) ---
+FLY_UI_USB = 1
+FLY_UI_CHORD_ARMED = 2
+FLY_UI_SYSTEM = 4
+
+# Reviewed RGB222 roles: background, green, gray, magenta, amber, white.
+BLACK, GREEN, GRAY, MAGENTA, AMBER, WHITE = 0x00, 0x0C, 0x2A, 0x33, 0x38, 0x3F
+ATLAS_ACTIVATIONS = (0, 128, 256, 512, -512)
+ATLAS_LAYOUT_HEADER = ROOT / "flyos/display/n64_atlas_layout.h"
 
 
 def sha256(data: bytes) -> str:
@@ -182,6 +194,167 @@ def state_oracle_unpack(word: int) -> tuple[int, int]:
                                capture_output=True, text=True, check=True)
     local, mode = completed.stdout.split()
     return int(local), int(mode)
+
+
+@lru_cache(maxsize=1)
+def atlas_layout() -> dict[str, Any]:
+    """The authoritative atlas layout, read back out of n64_atlas_layout.h itself.
+
+    The header is the single source of truth shared by the host renderer, the
+    target renderer and this harness, so it is compiled and asked rather than
+    transcribed: a Python copy of the table would be free to drift.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="flyos-n64-atlas-oracle-"))
+    atexit.register(shutil.rmtree, directory, ignore_errors=True)
+    source = directory / "atlas_oracle.c"
+    executable = directory / ("atlas_oracle.exe" if os.name == "nt" else "atlas_oracle")
+    source.write_text(
+        "#include <stdio.h>\n#include \"display/n64_atlas_layout.h\"\n"
+        "int main(void) {\n"
+        "    for (unsigned n = 0; n < FLY_N64_ATLAS_NEURONS; ++n) {\n"
+        "        FlyN64AtlasPoint p = fly_n64_atlas_point(n);\n"
+        "        printf(\"P %u %u %u %u\\n\", n, (unsigned)p.x, (unsigned)p.y,\n"
+        "               (unsigned)fly_n64_atlas_population(n));\n"
+        "    }\n"
+        "    for (unsigned l = 0; l < 4; ++l) {\n"
+        "        printf(\"D %u %u\", l, fly_n64_atlas_density_pixels(l));\n"
+        "        for (unsigned r = 0; r < FLY_N64_ATLAS_MASK; ++r)\n"
+        "            printf(\" %u\", (unsigned)fly_n64_atlas_density[l][r]);\n"
+        "        printf(\"\\n\");\n"
+        "    }\n"
+        "    for (unsigned s = 0; s < FLY_N64_ATLAS_STROKES; ++s)\n"
+        "        printf(\"S %u %u %u %u\\n\", (unsigned)fly_n64_atlas_stroke[s][0],\n"
+        "               (unsigned)fly_n64_atlas_stroke[s][1],\n"
+        "               (unsigned)fly_n64_atlas_stroke[s][2],\n"
+        "               (unsigned)fly_n64_atlas_stroke[s][3]);\n"
+        "    for (unsigned d = 0; d < 4; ++d)\n"
+        "        printf(\"T %d %d\\n\", (int)fly_n64_atlas_step[0][d],\n"
+        "               (int)fly_n64_atlas_step[1][d]);\n"
+        "    for (unsigned k = 0; k < 5; ++k)\n"
+        "        printf(\"C %u %u\\n\", (unsigned)fly_n64_atlas_callout[k][0],\n"
+        "               (unsigned)fly_n64_atlas_callout[k][1]);\n"
+        "    for (int c = 32; c < 127; ++c)\n"
+        "        printf(\"G %d %u\\n\", c, (unsigned)fly_n64_atlas_glyph((char)c));\n"
+        "    printf(\"M %u %u %d %d %u %u %u\\n\", FLY_N64_ATLAS_NEURONS,\n"
+        "           FLY_N64_ATLAS_MASK, FLY_N64_ATLAS_CENTER, FLY_N64_ATLAS_RADIUS,\n"
+        "           FLY_N64_ATLAS_GLYPH_PITCH, FLY_N64_ATLAS_TITLE_Y,\n"
+        "           FLY_N64_ATLAS_FOOTER_Y);\n"
+        "    return 0;\n"
+        "}\n",
+        encoding="ascii")
+    command = ["gcc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+               "-I", str(ROOT / "flyos"), str(source), "-o", str(executable)]
+    compiled = subprocess.run(command, capture_output=True, text=True)
+    require(compiled.returncode == 0, "atlas oracle compile failed: " + compiled.stderr)
+    dumped = subprocess.run([str(executable)], capture_output=True, text=True, check=True)
+    points: list[tuple[int, int]] = []
+    populations: list[int] = []
+    density: list[list[int]] = []
+    density_pixels: list[int] = []
+    strokes: list[tuple[int, int, int, int]] = []
+    steps: list[tuple[int, int]] = []
+    callouts: list[tuple[int, int]] = []
+    font: dict[str, int] = {}
+    meta: list[int] = []
+    for line in dumped.stdout.split("\n"):
+        if not line:
+            continue
+        kind, *fields = line.split()
+        values = [int(field) for field in fields]
+        if kind == "P":
+            require(values[0] == len(points), "atlas oracle emitted neurons out of order")
+            points.append((values[1], values[2]))
+            populations.append(values[3])
+        elif kind == "D":
+            density_pixels.append(values[1])
+            density.append(values[2:])
+        elif kind == "S":
+            strokes.append(tuple(values))
+        elif kind == "T":
+            steps.append(tuple(values))
+        elif kind == "C":
+            callouts.append(tuple(values))
+        elif kind == "G":
+            font[chr(values[0])] = values[1]
+        else:
+            require(kind == "M", f"unknown atlas oracle record: {line}")
+            meta = values
+    require(len(meta) == 7, "atlas oracle emitted no geometry record")
+    require(len(points) == meta[0] == 64 and meta[1] == 5, "atlas oracle geometry mismatch")
+    require(density_pixels == [1, 9, 16, 25], f"wrong density counts: {density_pixels}")
+    return {"points": points, "populations": populations, "density": density,
+            "density_pixels": density_pixels, "strokes": strokes, "steps": steps,
+            "callouts": callouts, "font": font, "neurons": meta[0], "mask": meta[1],
+            "center": meta[2], "radius": meta[3], "pitch": meta[4],
+            "title_y": meta[5], "footer_y": meta[6]}
+
+
+def atlas_mask(neuron: int) -> set[int]:
+    """Framebuffer byte indices of one neuron's 5x5 mask."""
+    layout = atlas_layout()
+    x, y = layout["points"][neuron]
+    return {(y + row) * 240 + x + column
+            for row in range(layout["mask"]) for column in range(layout["mask"])}
+
+
+def atlas_lit(neuron: int, activation: int) -> set[int]:
+    """Framebuffer byte indices the given activation lights inside a mask."""
+    layout = atlas_layout()
+    x, y = layout["points"][neuron]
+    magnitude = abs(activation)
+    level = 0 if magnitude < 128 else 1 if magnitude < 256 else 2 if magnitude < 512 else 3
+    return {(y + row) * 240 + x + column
+            for row in range(layout["mask"]) for column in range(layout["mask"])
+            if layout["density"][level][row] >> column & 1}
+
+
+def atlas_colour(neuron: int, activation: int) -> int:
+    """The reviewed RGB222 byte one activation paints inside its mask."""
+    if activation < 0:
+        return MAGENTA
+    if abs(activation) >= 512 and atlas_layout()["populations"][neuron] == 5:
+        return AMBER
+    return GREEN
+
+
+def label_pixels(text: str, x: int, y: int) -> set[tuple[int, int]]:
+    """Pixels the shared 3x5 face lights for `text` drawn with its pen at x, y."""
+    font = atlas_layout()["font"]
+    pitch = atlas_layout()["pitch"]
+    pixels = set()
+    for index, character in enumerate(text):
+        bits = font.get(character, 0)
+        for row in range(5):
+            for column in range(3):
+                if bits >> (row * 3 + column) & 1:
+                    pixels.add((x + index * pitch + 2 - column, y + row))
+    return pixels
+
+
+def find_text(framebuffer: bytes, text: str) -> list[tuple[int, int]]:
+    """Every pen position at which `text` is rendered, exactly, in white.
+
+    A hit must light every pixel of the label and no other pixel inside the
+    label's own bounding box, so a longer word cannot masquerade as a shorter
+    one.
+    """
+    pattern = label_pixels(text, 0, 0)
+    require(bool(pattern), f"label has no ink: {text!r}")
+    width = len(text) * atlas_layout()["pitch"] - 1
+    lit = {(index % 240, index // 240)
+           for index, value in enumerate(framebuffer) if value == WHITE}
+    anchor = min(pattern)
+    hits = []
+    for spot in lit:
+        origin = (spot[0] - anchor[0], spot[1] - anchor[1])
+        shifted = {(x + origin[0], y + origin[1]) for x, y in pattern}
+        if not shifted <= lit:
+            continue
+        box = {(origin[0] + x, origin[1] + y)
+               for x in range(width) for y in range(5)}
+        if lit & box == shifted:
+            hits.append(origin)
+    return sorted(hits)
 
 
 def gpio_registers(mask: int) -> dict[int, int]:
@@ -371,6 +544,27 @@ def stack_audit(build: Path, symbols: dict) -> dict:
             "external_transfers": external, "cross_segment_branches": cross}
 
 
+PREDICATED_STORE = re.compile(
+    r"^\s*([0-9a-f]+):\s+(?:[0-9a-f]{4,8}\s+)+"
+    r"((?:str|stm|push)[a-z]*(?:eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le))(?:\.[nw])?\s")
+
+
+def assert_unconditional_stores(build: Path) -> None:
+    """Every store in the payload must be a single unconditional instruction.
+
+    That keeps write confinement auditable straight out of the disassembly,
+    and it keeps this harness honest: Unicorn mis-executes a conditional store
+    inside a Thumb IT block while a memory-write hook is installed, silently
+    dropping some of them, so a predicated store would make the emulated
+    frames disagree with the hardware they are supposed to prove.
+    """
+    offenders = [f"{match[1]} {match[2]}" for match in
+                 (PREDICATED_STORE.match(line)
+                  for line in (build / DISASSEMBLY_NAME).read_text().splitlines())
+                 if match]
+    require(not offenders, f"predicated store instructions in payload: {offenders}")
+
+
 def clean_oracle_output(build: Path) -> None:
     """Remove only generated oracle output beneath the selected build root."""
     build = build.resolve()
@@ -399,8 +593,8 @@ def assert_build_clean(build: Path, manifest: dict) -> None:
 
 @lru_cache(maxsize=64)
 def host_oracle(build: Path, tick: int, buttons: int, battery_valid: int,
-                battery: int, usb_ms: int, retained: bool = False) -> dict:
-    fixture = f"t{tick:08x}-k{buttons:02x}-b{battery_valid}{battery:03d}-u{usb_ms}"
+                battery: int, ui_flags: int, retained: bool = False) -> dict:
+    fixture = f"t{tick:08x}-k{buttons:02x}-b{battery_valid}{battery:03d}-u{ui_flags}"
     context = None
     if retained:
         directory = build / "oracle" / "retained" / fixture
@@ -418,7 +612,7 @@ def host_oracle(build: Path, tick: int, buttons: int, battery_valid: int,
         compiled = subprocess.run(command, capture_output=True, text=True)
         require(compiled.returncode == 0, "host oracle compile failed: " + compiled.stderr)
         subprocess.run([str(executable), str(tick), str(buttons), str(battery_valid), str(battery),
-                        str(usb_ms), str(output)], check=True, capture_output=True)
+                        str(ui_flags), str(output)], check=True, capture_output=True)
         data = output.read_bytes()
         require(len(data) == FB_SIZE * 2 + 140, "wrong host oracle length")
         brain = data[FB_SIZE * 2:]
@@ -457,6 +651,7 @@ def check_build(build: Path = DEFAULT_BUILD) -> dict:
     require(image[KEY_HOOK - 0x3000:KEY_HOOK - 0x3000 + 6] == bytes.fromhex("30b5c0ebc002"),
             "pinned key entry bytes changed")
     require(segments["primary"]["end"] <= 0x1F63FE, "repair byte consumed")
+    assert_unconditional_stores(build)
     audit = stack_audit(build, symbols)
     oracle = host_oracle(build, 0x003DA005, 0, 1, 73, 0, retained=True)
     files = [build / ELF_NAME, build / MAP_NAME, build / DISASSEMBLY_NAME, build / "symbols.txt",
@@ -464,15 +659,16 @@ def check_build(build: Path = DEFAULT_BUILD) -> dict:
     files += sorted(build.glob("*.su")) + sorted(build.glob("*.o"))
     files += [build / name for name in oracle["artifacts"]]
     sources = [TARGET / name for name in
-               ("hook.S", "overlay.c", "renderer.c", "brain64_packed.c", "state.h", "linker.ld", "build.ps1")]
+               ("hook.S", "overlay.c", "renderer.c", "renderer.h", "brain64_packed.c",
+                "state.h", "linker.ld", "build.ps1")]
     sources += [ROOT / "flyos/fly/brain64.c", ROOT / "flyos/fly/brain64.h",
                 ROOT / "flyos/display/neural_specimen.c", ROOT / "flyos/display/neural_specimen.h",
-                Path(__file__).resolve(), ALLOCATION, RUNTIME_STATE]
+                ATLAS_LAYOUT_HEADER, Path(__file__).resolve(), ALLOCATION, RUNTIME_STATE]
     manifest = {"schema": "flyos.fr245.n64-atlas-shell-target.v1", **evidence,
                 "link_and_emulate_allowed": True, "packaging_allowed": False,
                 "segments": segments, "repair_byte": 0x1F63FF, "stack_audit": audit,
                 "symbols": symbols,
-                "retained_oracle": {"fixture": "tick=0x003da005 buttons=0 battery=73 usb_ms=0",
+                "retained_oracle": {"fixture": "tick=0x003da005 buttons=0 battery=73 ui_flags=0",
                                     "activation_sha256": sha256(oracle["brain"][:128]),
                                     "target_framebuffer_sha256": sha256(oracle["target_framebuffer"]),
                                     "shared_framebuffer_sha256": sha256(oracle["shared_framebuffer"])},
@@ -515,35 +711,21 @@ def load_build(build: Path = DEFAULT_BUILD) -> Bundle:
     return bundle
 
 
-def expected_cell(level: int, x: int, y: int) -> set[tuple[int, int]]:
-    if level == 0:
-        return {(x + 2, y + 2), (x + 3, y + 2)}
-    if level == 1:
-        return {(x + 2, y + n) for n in range(6)} | {(x + n, y + 2) for n in range(6)}
-    if level == 2:
-        return ({(x + n, y) for n in range(6)} | {(x + n, y + 5) for n in range(6)} |
-                {(x, y + n) for n in range(6)} | {(x + 5, y + n) for n in range(6)})
-    return {(x + a, y + b) for a in range(6) for b in range(6)}
-
-
 def verify_cells(framebuffer: bytes, activation: list[int]) -> int:
+    """Check all 64 atlas masks: exact density, exact colour, nothing else lit."""
     require(len(activation) == 64, "expected 64 activations")
-    regions = []
-    bases = (93, 93, 89, 89, 89, 89, 93, 93)
-    gaps = (7, 7, 8, 8, 8, 8, 7, 7)
+    claimed: set[int] = set()
     for neuron, value in enumerate(activation):
-        row = neuron >> 3
-        x, y = bases[row] + (neuron & 7) * gaps[row], 76 + row * 9
-        region = {(x + a, y + b) for a in range(6) for b in range(6)}
-        require(not any(region & prior for prior in regions), "neuron cells overlap")
-        regions.append(region)
-        magnitude = abs(value)
-        level = 0 if magnitude < 128 else 1 if magnitude < 256 else 2 if magnitude < 512 else 3
-        lit = expected_cell(level, x, y)
-        role = 0x33 if value < 0 else 0x38 if (neuron < 5 or neuron >= 56) and level == 3 else 0x0C
-        for point in region:
-            require(framebuffer[point[1] * 240 + point[0]] == (role if point in lit else 0),
-                    f"neuron {neuron} direct-cell mismatch at {point}")
+        mask = atlas_mask(neuron)
+        require(not mask & claimed, f"neuron {neuron} mask overlaps another")
+        claimed |= mask
+        lit = atlas_lit(neuron, value)
+        colour = atlas_colour(neuron, value)
+        for index in mask:
+            expected = colour if index in lit else BLACK
+            require(framebuffer[index] == expected,
+                    f"neuron {neuron} mask mismatch at {index % 240},{index // 240}: "
+                    f"{framebuffer[index]:#04x} != {expected:#04x}")
     return 64
 
 
@@ -606,8 +788,36 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
             battery_bits: int = 0x42920000, usb_state: int = 0,
             rtc_samples: list[tuple[int, int, int]] | None = None,
             forced_activation: tuple[int, int] | None = None,
-            key_statuses: dict[int, int] | None = None) -> dict[str, Any]:
+            forced_baseline: int | None = None,
+            forced_buttons: int | None = None,
+            ui_flags: int | None = None,
+            key_statuses: dict[int, int] | None = None,
+            geometry_only: bool = False) -> dict[str, Any]:
+    """Run the linked display hook once and audit everything it touched.
+
+    forced_baseline overwrites every neuron's activation at the n64_render
+    boundary, and forced_activation then overrides one of them, so a caller can
+    isolate exactly one neuron.  ui_flags overwrites the presentation byte the
+    overlay computed, which is how FLY_UI_CHORD_ARMED and FLY_UI_SYSTEM are
+    exercised while nothing on this image sets them yet.  forced_buttons does
+    the same for the key byte: holding BACK makes this overlay pass the frame
+    straight through to Garmin, so BACK's callout cannot be reached through
+    pressed_mask until five-key ownership lands.
+
+    geometry_only trades the audit for speed and is for mask derivation only:
+    it keeps the three boundary hooks (dirty, dispatch, n64_render) but drops
+    the per-instruction allowlist, the stack tracking and the memory hooks, so
+    the RTC is seeded in memory instead of being fed by the read hook.  It
+    returns just the rendered frame; every invariant this harness proves is
+    proved by the ordinary, fully hooked path.
+    """
     require(0 <= pressed_mask <= 31 and 0 <= fill <= 255 and 0 <= usb_state <= 255, "bad fixture")
+    require(ui_flags is None or 0 <= ui_flags <= 255, "bad ui flags")
+    require(forced_buttons is None or 0 <= forced_buttons <= 31, "bad forced buttons")
+    require(forced_baseline is None or -32768 <= forced_baseline <= 32767,
+            "bad forced baseline")
+    require(not geometry_only or rtc_samples is None,
+            "geometry_only seeds the RTC in memory and takes no RTC fixture")
     samples = rtc_samples or [(123, 0x2005, 123)]
     require(1 <= len(samples) <= 2, "RTC fixture must have one or two attempts")
     rtc_values = [(address, value & 0xFFFFFFFF) for sample in samples
@@ -627,6 +837,11 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
     for address, value in gpio_registers(pressed_mask).items():
         machine.mem_write(address, struct.pack("<I", value))
     machine.mem_write(BATTERY, struct.pack("<I", battery_bits & 0xFFFFFFFF)); machine.mem_write(USB_MS, bytes([usb_state]))
+    if geometry_only:
+        # No read hook to feed the RTC, so park the fixture in memory: the
+        # overlay samples seconds, prescaler, seconds and needs them stable.
+        machine.mem_write(RTC_SECONDS, struct.pack("<I", samples[0][0]))
+        machine.mem_write(RTC_PRESCALER, struct.pack("<I", samples[0][1]))
     for pad in KEY_PADS:
         machine.mem_write(pad, struct.pack("<H", KEY_IDLE))
     for key, status in (key_statuses or {}).items():
@@ -655,32 +870,50 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
     node_set = {item[0] for item in nodes}
     root_reads = 0
 
+    def on_dirty(uc: Uc) -> None:
+        external_targets.append(DIRTY); dirty_calls.append([uc.reg_read(r) for r in ARGS])
+        require(uc.reg_read(UC_ARM_REG_SP) % 8 == 0, "dirty SP not aligned")
+        for i, reg in enumerate((*ARGS, UC_ARM_REG_R12)): uc.reg_write(reg, 0xA0A00000 + i)
+        uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR))
+
+    def on_dispatch(uc: Uc) -> None:
+        external_targets.append(DISPATCH)
+        dispatch_calls.append([uc.reg_read(UC_ARM_REG_R0), uc.reg_read(UC_ARM_REG_R1)])
+        require(uc.reg_read(UC_ARM_REG_LR) == HOOK + 5, "dispatch lost original return")
+        uc.emu_stop()
+
+    def on_render(uc: Uc) -> None:
+        """Apply the activation/ui_flags overrides and capture the real arguments."""
+        brain_ptr, inputs_ptr = uc.reg_read(UC_ARM_REG_R1), uc.reg_read(UC_ARM_REG_R2)
+        if forced_baseline is not None:
+            uc.mem_write(brain_ptr, struct.pack("<64h", *([forced_baseline] * 64)))
+        if forced_activation is not None:
+            neuron, value = forced_activation
+            require(0 <= neuron < 64 and -32768 <= value <= 32767, "bad forced activation")
+            uc.mem_write(brain_ptr + neuron * 2, struct.pack("<h", value))
+        if forced_buttons is not None:
+            uc.mem_write(inputs_ptr, bytes([forced_buttons]))
+        if ui_flags is not None:
+            uc.mem_write(uc.reg_read(UC_ARM_REG_SP), struct.pack("<I", ui_flags))
+        brain = bytes(uc.mem_read(brain_ptr, 140)); inputs = bytes(uc.mem_read(inputs_ptr, 12))
+        captured.update(activation=list(struct.unpack_from("<64h", brain)), brain=brain,
+                        state=brain[136],
+                        tick=uc.reg_read(UC_ARM_REG_R3), buttons=inputs[0], valid_mask=inputs[1],
+                        battery=inputs[8],
+                        ui_flags=struct.unpack("<I", uc.mem_read(uc.reg_read(UC_ARM_REG_SP), 4))[0])
+
     def on_code(uc: Uc, address: int, size: int, _user: Any) -> None:
         nonlocal instructions, minimum_sp
         instructions += 1; executed.add(address); minimum_sp = min(minimum_sp, uc.reg_read(UC_ARM_REG_SP))
         require(STACK_POINTER - minimum_sp <= STACK_LIMIT, "runtime stack exceeded 384 bytes")
         if address == DIRTY:
-            external_targets.append(address); dirty_calls.append([uc.reg_read(r) for r in ARGS])
-            require(uc.reg_read(UC_ARM_REG_SP) % 8 == 0, "dirty SP not aligned")
-            for i, reg in enumerate((*ARGS, UC_ARM_REG_R12)): uc.reg_write(reg, 0xA0A00000 + i)
-            uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR)); return
+            on_dirty(uc); return
         if address == DISPATCH:
-            external_targets.append(address); dispatch_calls.append([uc.reg_read(UC_ARM_REG_R0), uc.reg_read(UC_ARM_REG_R1)])
-            require(uc.reg_read(UC_ARM_REG_LR) == HOOK + 5, "dispatch lost original return")
-            uc.emu_stop(); return
+            on_dispatch(uc); return
         require(any(start <= address and address + size <= end for start, end in ranges),
                 f"execution escaped allowlist: {address:#x}")
         if address == symbols["n64_render"]["address"]:
-            brain_ptr, inputs_ptr = uc.reg_read(UC_ARM_REG_R1), uc.reg_read(UC_ARM_REG_R2)
-            if forced_activation is not None:
-                neuron, value = forced_activation
-                require(0 <= neuron < 64 and -32768 <= value <= 32767, "bad forced activation")
-                uc.mem_write(brain_ptr + neuron * 2, struct.pack("<h", value))
-            brain = bytes(uc.mem_read(brain_ptr, 140)); inputs = bytes(uc.mem_read(inputs_ptr, 12))
-            captured.update(activation=list(struct.unpack_from("<64h", brain)), brain=brain,
-                            state=brain[136],
-                            tick=uc.reg_read(UC_ARM_REG_R3), buttons=inputs[0], valid_mask=inputs[1],
-                            battery=inputs[8], usb_ms=struct.unpack("<I", uc.mem_read(uc.reg_read(UC_ARM_REG_SP), 4))[0])
+            on_render(uc)
 
     def on_read(uc: Uc, _access: int, address: int, size: int, _value: int, _user: Any) -> None:
         nonlocal rtc_index, root_reads
@@ -716,7 +949,14 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
         else:
             outside_writes.append([address, size, value]); raise ValueError(f"write escaped framebuffer/stack: {address:#x}")
 
-    machine.hook_add(UC_HOOK_CODE, on_code); machine.hook_add(UC_HOOK_MEM_READ, on_read); machine.hook_add(UC_HOOK_MEM_WRITE, on_write)
+    if geometry_only:
+        for address, handler in ((DIRTY, on_dirty), (DISPATCH, on_dispatch),
+                                 (symbols["n64_render"]["address"], on_render)):
+            machine.hook_add(UC_HOOK_CODE,
+                             lambda uc, _a, _s, _u, act=handler: act(uc),
+                             begin=address, end=address)
+    else:
+        machine.hook_add(UC_HOOK_CODE, on_code); machine.hook_add(UC_HOOK_MEM_READ, on_read); machine.hook_add(UC_HOOK_MEM_WRITE, on_write)
     machine.emu_start(HOOK | 1, 0, count=INSTRUCTION_CAP)
     require(len(dispatch_calls) == 1,
             f"instruction cap reached before dispatch at {machine.reg_read(UC_ARM_REG_PC):#x} "
@@ -727,26 +967,36 @@ def emulate_display(bundle: Bundle, *, view: str = "valid", pressed_mask: int = 
             f"stack={bytes(machine.mem_read(machine.reg_read(UC_ARM_REG_SP),48)).hex()}")
     framebuffer = bytes(machine.mem_read(FRAMEBUFFER, FB_SIZE))
     eligible = bool(dirty_calls)
+    if geometry_only:
+        return {"geometry_only": True, "eligible": eligible, "framebuffer": framebuffer,
+                "framebuffer_sha256": sha256(framebuffer), **captured}
     battery_valid = int(battery_bits == 0x80000000 or
                         ((battery_bits & 0x80000000) == 0 and battery_bits <= 0x42C80000 and
                          ((battery_bits >> 23) & 0xFF) != 0xFF))
     battery_value = 0 if not battery_valid or battery_bits == 0x80000000 or ((battery_bits >> 23) & 0xFF) < 127 else \
         (((battery_bits & 0x7FFFFF) | 0x800000) >> (150 - ((battery_bits >> 23) & 0xFF)))
-    oracle = host_oracle(bundle.build, captured.get("tick", 0), captured.get("buttons", pressed_mask), battery_valid,
-                         battery_value, int(usb_state in (3, 4))) if eligible and forced_activation is None else None
-    if eligible and forced_activation is None:
+    # The host oracle rebuilds the brain itself, so it can only be compared
+    # against a run whose activations were not overridden at the boundary.
+    natural = (forced_activation is None and forced_baseline is None and
+               forced_buttons is None)
+    oracle = host_oracle(bundle.build, captured.get("tick", 0), captured.get("buttons", pressed_mask),
+                         battery_valid, battery_value,
+                         captured.get("ui_flags", 0)) if eligible and natural else None
+    if eligible and natural:
         require(captured["brain"] == oracle["brain"], "target brain differs from host Brain64")
         require(framebuffer == oracle["target_framebuffer"], "target renderer differs from host target oracle")
     verified = verify_cells(framebuffer, captured["activation"]) if eligible else 0
     foreground = [(index % 240, index // 240) for index, value in enumerate(framebuffer) if value != 0]
     result = {"eligible": eligible, "view": view, "pressed_mask": pressed_mask,
               "framebuffer_null": framebuffer_null, "initial_fill": fill,
-              "forced_activation": forced_activation,
+              "forced_activation": forced_activation, "forced_baseline": forced_baseline,
+              "forced_buttons": forced_buttons,
               "framebuffer": framebuffer, "framebuffer_sha256": sha256(framebuffer),
               "framebuffer_unchanged": framebuffer == bytes([fill]) * FB_SIZE,
-              "all_pixels_reviewed_palette": all(value in (0x00, 0x2A, 0x3F, 0x0C, 0x33, 0x38)
+              "all_pixels_reviewed_palette": all(value in (BLACK, GRAY, WHITE, GREEN, MAGENTA, AMBER)
                                                     for value in framebuffer),
-              "safe_radius": all((x - 120) ** 2 + (y - 120) ** 2 <= 100 ** 2 for x, y in foreground),
+              "safe_radius": all((x - 120) ** 2 + (y - 120) ** 2 <=
+                                 atlas_layout()["radius"] ** 2 for x, y in foreground),
               "dirty_calls": dirty_calls, "dispatch_calls": dispatch_calls,
               "external_targets": external_targets, "data_reads": data_reads,
               "outside_writes": outside_writes, "write_counts": dict(write_counts),
@@ -991,10 +1241,98 @@ def emulate_usb_sequence(bundle: Bundle, transitions: list[dict[str, Any]],
         view = str(transition.get("view", "valid"))
         display = emulate_display(bundle, view=view, usb_state=target_state)
         steps.append({"from": source_state, "to": target_state, "view": view,
-                      "usb_ms": display.get("usb_ms"), "eligible": display["eligible"],
+                      "usb_ms": (display.get("ui_flags", 0) & FLY_UI_USB) // FLY_UI_USB,
+                      "eligible": display["eligible"],
                       "dirty_calls": display["dirty_calls"],
                       "framebuffer_sha256": display["framebuffer_sha256"]})
     return {"steps": steps, "hook_sites_present": False}
+
+
+_ATLAS_MANIFESTS: dict[str, dict[str, Any]] = {}
+
+
+def build_atlas_manifest(bundle: Bundle) -> dict[str, Any]:
+    """Derive the 64 neuron-to-screen masks from the linked binary itself.
+
+    Every neuron is driven through activations 0, 128, 256, 512 and -512 with
+    all the others held at zero, and its mask is read back as the set of
+    framebuffer bytes those five renders disagree about.  Nothing here reads
+    the declared layout to find a mask; the declared layout is only compared
+    against what the binary actually painted.
+    """
+    cached = _ATLAS_MANIFESTS.get(str(bundle.build))
+    if cached is not None:
+        return cached
+    layout = atlas_layout()
+    quiet = emulate_display(bundle, forced_baseline=0, geometry_only=True)["framebuffer"]
+    frames: dict[int, dict[int, bytes]] = {}
+    for neuron in range(64):
+        frames[neuron] = {0: quiet}
+        for activation in ATLAS_ACTIVATIONS:
+            if activation == 0:
+                continue  # the all-zero baseline already is this render
+            frames[neuron][activation] = emulate_display(
+                bundle, forced_baseline=0, forced_activation=(neuron, activation),
+                geometry_only=True)["framebuffer"]
+    neurons = []
+    masks: list[set[int]] = []
+    for neuron in range(64):
+        reference = frames[neuron][512]
+        mask: set[int] = set()
+        for activation, frame in frames[neuron].items():
+            if activation == 512:
+                continue
+            mask |= {index for index, (a, b) in enumerate(zip(frame, reference)) if a != b}
+        masks.append(mask)
+        x, y = layout["points"][neuron]
+        neurons.append({
+            "id": neuron,
+            "population": layout["populations"][neuron],
+            "x": x, "y": y,
+            "mask": sorted(mask),
+            "matches_declared_mask": mask == atlas_mask(neuron),
+            "lit": {str(activation): sorted(index for index in mask
+                                            if frames[neuron][activation][index] != BLACK)
+                    for activation in ATLAS_ACTIVATIONS},
+            "density": [sum(1 for index in mask
+                            if frames[neuron][activation][index] != BLACK)
+                        for activation in ATLAS_ACTIVATIONS],
+            "colours": sorted({frames[neuron][activation][index]
+                               for activation in ATLAS_ACTIVATIONS for index in mask
+                               if frames[neuron][activation][index] != BLACK})})
+    union: set[int] = set()
+    disjoint = True
+    for mask in masks:
+        if mask & union:
+            disjoint = False
+        union |= mask
+    # Anything lit in the all-zero frame that is not one of the 64 mask centres
+    # is fixed scaffold, tract or label: none of it may reach into a mask.
+    centres = {(y + 2) * 240 + x + 2 for x, y in layout["points"]}
+    static = {index for index, value in enumerate(quiet) if value != BLACK} - centres
+    radius = layout["radius"]
+    checks = {
+        "neuron_count": len(neurons) == 64,
+        "masks_disjoint": disjoint and all(len(mask) == 25 for mask in masks),
+        "masks_match_declared_layout": all(item["matches_declared_mask"] for item in neurons),
+        "static_clear": not (static & union),
+        "radius_98": all((index % 240 - 120) ** 2 + (index // 240 - 120) ** 2 <= radius ** 2
+                         for index in union | static),
+        "densities": all(item["density"] == [1, 9, 16, 25, 25] for item in neurons),
+        "populations": [item["population"] for item in neurons] ==
+                       [0] * 12 + [1] * 12 + [2] * 16 + [3] * 8 + [4] * 8 + [5] * 8,
+    }
+    canonical = json.dumps([{key: item[key] for key in
+                             ("id", "population", "x", "y", "mask", "density", "colours")}
+                            for item in neurons], separators=(",", ":"), sort_keys=True)
+    manifest = {"schema": "flyos.n64-atlas-mapping.v1",
+                "activations": list(ATLAS_ACTIVATIONS),
+                "neurons": neurons,
+                "static_pixels": len(static),
+                "mapping_sha256": sha256(canonical.encode()),
+                "checks": checks}
+    _ATLAS_MANIFESTS[str(bundle.build)] = manifest
+    return manifest
 
 
 def validate_result(result: dict) -> None:
@@ -1021,6 +1359,12 @@ def generate_report(build: Path, report_path: Path, preview_path: Path | None) -
         cases[view] = {key: value for key, value in result.items() if key not in ("framebuffer", "brain", "activation", "data_reads")}
     saturated = emulate_display(bundle, forced_activation=(56, 700))
     battery100 = emulate_display(bundle, battery_bits=0x42C80000)
+    atlas = build_atlas_manifest(bundle)
+    labels = {}
+    for mask in (1, 2, 4, 8, 16):
+        labels[f"pressed_{mask}"] = emulate_display(bundle, forced_buttons=mask)["framebuffer_sha256"]
+    for name, flags in (("chord_armed", FLY_UI_CHORD_ARMED), ("system", FLY_UI_SYSTEM)):
+        labels[name] = emulate_display(bundle, ui_flags=flags)["framebuffer_sha256"]
     controls = {}
     for key in (1, 3, 4):
         controls[str(key)] = emulate_key_sequence(bundle, [
@@ -1029,6 +1373,10 @@ def generate_report(build: Path, report_path: Path, preview_path: Path | None) -
     report = {"schema": "flyos.fr245.n64-atlas-shell-emulation.v1", "cases": cases,
               "controls": controls,
               "vendor_oracle": {name: vendor_view_oracle(name) for name in VENDOR_FIXTURES},
+              "atlas_mapping": {"mapping_sha256": atlas["mapping_sha256"],
+                                "checks": atlas["checks"],
+                                "static_pixels": atlas["static_pixels"]},
+              "label_frames": labels,
               "palette": {"allowed_native_bytes": [0, 12, 42, 51, 56, 63],
                           "saturated_fixture": {"neuron": 56, "activation": 700,
                                                 "pixels_present": sorted(set(saturated["framebuffer"]))}},

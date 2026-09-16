@@ -13,9 +13,9 @@ SECTIONS
         *overlay.o(.text.flyos_key_event)
         *brain64_packed.o(.text.fly_brain64_reconstruct)
         *renderer.o(.text.pixel)
-        *renderer.o(.text.line)
         *renderer.o(.text.text)
-        *renderer.o(.rodata.letters*)
+        *renderer.o(.rodata.fly_n64_atlas_letters*)
+        *renderer.o(.rodata.fly_n64_atlas_stroke*)
     }
     .secondary 0x001fa400 :
     {

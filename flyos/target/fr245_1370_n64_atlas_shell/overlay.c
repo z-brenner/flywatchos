@@ -1,11 +1,11 @@
 #include <stdint.h>
 #include "fly/brain64.h"
+#include "renderer.h"
 
 typedef uint32_t (*dispatch_fn)(uint8_t *, int);
 typedef void (*dirty_fn)(int, int, int, int);
 typedef uint32_t (*queue_send_fn)(uint32_t, const void *, uint32_t, uint32_t);
 
-void n64_render(uint8_t *, const FlyBrain64 *, const FlyBrainInputs *, uint32_t, uint8_t);
 void flyos_key_pass(uint32_t, uint32_t);
 
 enum {
@@ -180,8 +180,12 @@ uint32_t n64_overlay_then_flush(uint8_t *framebuffer, int original_wait) {
             inputs.valid_mask = FLY_BRAIN64_VALID_BATTERY;
         }
         fly_brain64_reconstruct(&brain, 0x46594f53u, tick, &inputs);
+        /* FLY_UI_CHORD_ARMED and FLY_UI_SYSTEM stay clear: nothing on this
+         * image decides a chord hold or a system session yet, and the
+         * five-key ownership state machine that will set them is a later
+         * task.  Fabricating either here would be inventing telemetry. */
         n64_render(framebuffer, &brain, &inputs, tick,
-                   (uint8_t)(usb_state == 3u || usb_state == 4u));
+                   (uint8_t)((usb_state == 3u || usb_state == 4u) ? FLY_UI_USB : 0u));
         clear_key_pulses();
         ((dirty_fn)0x0000f2e9u)(0, 0, 240, 240);
     }

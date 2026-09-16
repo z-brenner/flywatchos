@@ -10,26 +10,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 OLD_TARGET = ROOT / "flyos" / "target" / "fr245_1370_neural_specimen_n64_controls"
 TARGET = ROOT / "flyos" / "target" / "fr245_1370_n64_atlas_shell"
 EMULATOR = ROOT / "tools" / "garmin-firmware" / "emulate_n64_atlas_shell.py"
-OLD_EMULATOR = ROOT / "tools" / "garmin-firmware" / "emulate_neural_specimen_n64_controls.py"
 SPEC = importlib.util.spec_from_file_location("flyos_n64_atlas_shell_emulator", EMULATOR)
 N64 = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = N64
 SPEC.loader.exec_module(N64)
-OLD_SPEC = importlib.util.spec_from_file_location("flyos_n64_controls_emulator_ref", OLD_EMULATOR)
-OLD_N64 = importlib.util.module_from_spec(OLD_SPEC)
-sys.modules[OLD_SPEC.name] = OLD_N64
-OLD_SPEC.loader.exec_module(OLD_N64)
 
-# Module-level build fixture: both targets' build/ directories are generated,
-# gitignored output (see .gitignore's **/build/) -- a clean checkout has
-# neither, and nothing else in this task produces flyos/target/.../build/.
-# Build each target exactly once, into its own temp sandbox via -BuildRoot,
-# and share the resulting Bundle across every TestCase below rather than
-# depending on (or repeatedly rebuilding into) an in-tree build directory.
+EXPECTED_BUTTON_LABELS = {1: "LIGHT // LUX", 2: "START // MOTOR BURST",
+                          4: "BACK // MODE", 8: "DOWN // CALM", 16: "UP // PULSE"}
+EXPECTED_IDLE_CALLOUTS = ("LUX", "MOTOR", "MODE", "CALM", "PULSE")
+
+# Module-level build fixture: the target's build/ directory is generated,
+# gitignored output (see .gitignore's **/build/) -- a clean checkout has none,
+# and nothing else in this task produces flyos/target/.../build/.  Build the
+# target exactly once, into its own temp sandbox via -BuildRoot, and share the
+# resulting Bundle across every TestCase below rather than depending on (or
+# repeatedly rebuilding into) an in-tree build directory.
 NEW_SANDBOX = None
-OLD_SANDBOX = None
 NEW_BUILD = None
-OLD_BUILD = None
 
 
 def _build_sandbox(target_dir, prefix):
@@ -47,22 +44,27 @@ def _build_sandbox(target_dir, prefix):
 
 
 def setUpModule():
-    global NEW_SANDBOX, OLD_SANDBOX, NEW_BUILD, OLD_BUILD
+    global NEW_SANDBOX, NEW_BUILD
     NEW_SANDBOX, NEW_BUILD = _build_sandbox(TARGET, "flyos-n64-atlas-shell-suite-")
-    OLD_SANDBOX, OLD_BUILD = _build_sandbox(OLD_TARGET, "flyos-n64-controls-suite-")
 
 
 def tearDownModule():
     if NEW_SANDBOX is not None:
         NEW_SANDBOX.cleanup()
-    if OLD_SANDBOX is not None:
-        OLD_SANDBOX.cleanup()
 
 
 class ScaffoldTests(unittest.TestCase):
-    def test_scaffold_starts_from_exact_controls_sources(self):
-        for name in ("hook.S", "overlay.c", "renderer.c", "brain64_packed.c"):
+    def test_hook_and_packed_brain_are_still_the_exact_controls_sources(self):
+        for name in ("hook.S", "brain64_packed.c"):
             self.assertEqual((OLD_TARGET / name).read_bytes(), (TARGET / name).read_bytes())
+
+    def test_renderer_and_overlay_have_diverged_for_the_atlas(self):
+        # The fork was byte-identical at task 2; the atlas renderer and its
+        # ui_flags call site are this task's deliberate divergence.
+        for name in ("renderer.c", "overlay.c"):
+            self.assertNotEqual((OLD_TARGET / name).read_bytes(),
+                                (TARGET / name).read_bytes())
+        self.assertIn(b"FLY_UI_USB", (TARGET / "overlay.c").read_bytes())
 
 
 class StateCodecTests(unittest.TestCase):
@@ -158,46 +160,148 @@ class TargetBuildTests(unittest.TestCase):
         sections, _ = N64.read_elf(self.bundle.build / N64.ELF_NAME)
         self.assertTrue(".forbidden" not in sections or sections[".forbidden"]["size"] == 0)
 
-    def test_segments_are_byte_identical_to_the_old_controls_build(self):
-        old_bundle = OLD_N64.load_build(OLD_BUILD)
-        self.assertEqual(old_bundle.primary, self.bundle.primary)
-        self.assertEqual(old_bundle.secondary, self.bundle.secondary)
-        self.assertEqual(old_bundle.hook, self.bundle.hook)
-        self.assertEqual(old_bundle.keyhook, self.bundle.keyhook)
-        self.assertEqual(old_bundle.manifest["stack_audit"]["stack_bound_bytes"],
-                         self.bundle.manifest["stack_audit"]["stack_bound_bytes"])
+    def test_both_payload_segments_still_fit_their_proved_allocation(self):
+        primary = self.bundle.manifest["segments"]["primary"]["size"]
+        secondary = self.bundle.manifest["segments"]["secondary"]["size"]
+        self.assertLessEqual(primary, 1023)
+        self.assertLessEqual(secondary, 2048)
+        # The atlas rewrite is a size reduction: it must not spend more flash
+        # than the 996 + 2044 byte controls baseline it replaces.
+        self.assertLess(primary + secondary, 996 + 2044)
 
 
-class DisplayByteIdentityTests(unittest.TestCase):
-    """Task 3-5 have not landed yet: emulate_display must behave exactly like
-    the old controls target's emulate() for every fixture it still shares."""
+class AtlasMappingTests(unittest.TestCase):
+    """The mapping manifest is derived from the linked binary, not declared."""
 
     @classmethod
     def setUpClass(cls):
         cls.bundle = N64.load_build(NEW_BUILD)
-        cls.old_bundle = OLD_N64.load_build(OLD_BUILD)
+        cls.manifest = N64.build_atlas_manifest(cls.bundle)
 
-    def test_display_framebuffers_match_the_old_target_for_every_fixture(self):
-        fixtures = [{}, {"pressed_mask": 1}, {"pressed_mask": 2}, {"pressed_mask": 8},
-                    {"pressed_mask": 16}, {"usb_state": 3}, {"usb_state": 4},
-                    {"battery_bits": 0x42C80000}, {"forced_activation": (56, 700)},
-                    {"key_statuses": {1: N64.KEY_OWNED}}, {"key_statuses": {3: N64.KEY_PULSE}}]
-        for fixture in fixtures:
+    def test_linked_target_has_64_disjoint_direct_neuron_masks(self):
+        manifest = self.manifest
+        self.assertEqual("flyos.n64-atlas-mapping.v1", manifest["schema"])
+        self.assertEqual(list(range(64)), [item["id"] for item in manifest["neurons"]])
+        self.assertTrue(manifest["checks"]["masks_disjoint"])
+        self.assertTrue(manifest["checks"]["static_clear"])
+        self.assertTrue(manifest["checks"]["radius_98"])
+        self.assertTrue(manifest["checks"]["masks_match_declared_layout"])
+        self.assertTrue(manifest["checks"]["populations"])
+        self.assertEqual(64, len(manifest["mapping_sha256"]))
+
+    def test_every_derived_mask_is_a_five_by_five_block_of_its_own(self):
+        seen = set()
+        for item in self.manifest["neurons"]:
+            mask = set(item["mask"])
+            self.assertEqual(25, len(mask), item["id"])
+            self.assertEqual({(item["y"] + row) * 240 + item["x"] + column
+                              for row in range(5) for column in range(5)}, mask)
+            self.assertFalse(mask & seen, item["id"])
+            seen |= mask
+        self.assertEqual(64 * 25, len(seen))
+
+    def test_density_alone_carries_magnitude_for_every_neuron(self):
+        self.assertTrue(self.manifest["checks"]["densities"])
+        for item in self.manifest["neurons"]:
+            self.assertEqual([1, 9, 16, 25, 25], item["density"], item["id"])
+            self.assertEqual([1, 9, 16, 25, 25],
+                             [len(item["lit"][str(activation)])
+                              for activation in N64.ATLAS_ACTIVATIONS], item["id"])
+
+    def test_only_the_descending_action_fan_saturates_amber(self):
+        for item in self.manifest["neurons"]:
+            expected = [N64.GREEN, N64.MAGENTA]
+            if item["population"] == 5:
+                expected = sorted(expected + [N64.AMBER])
+            self.assertEqual(expected, item["colours"], item["id"])
+            self.assertEqual(item["id"] >= 56, N64.AMBER in item["colours"], item["id"])
+
+    def test_populations_own_exactly_the_declared_identifier_ranges(self):
+        ranges = {0: range(0, 12), 1: range(12, 24), 2: range(24, 40),
+                  3: range(40, 48), 4: range(48, 56), 5: range(56, 64)}
+        for item in self.manifest["neurons"]:
+            self.assertIn(item["id"], ranges[item["population"]])
+
+    def test_deriving_the_mapping_again_reproduces_the_same_hash(self):
+        # Drop the memo so this really re-runs all 257 emulations rather than
+        # handing back the manifest the class already holds.
+        N64._ATLAS_MANIFESTS.clear()
+        again = N64.build_atlas_manifest(self.bundle)
+        self.assertEqual(self.manifest["mapping_sha256"], again["mapping_sha256"])
+        self.assertEqual(self.manifest["neurons"], again["neurons"])
+
+
+class VisualLabelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.bundle = N64.load_build(NEW_BUILD)
+
+    def frame(self, **fixture):
+        return N64.emulate_display(self.bundle, **fixture)["framebuffer"]
+
+    def assert_target_text(self, framebuffer, text):
+        hits = N64.find_text(framebuffer, text)
+        self.assertEqual(1, len(hits), f"{text!r} appeared {len(hits)} times")
+        return hits[0]
+
+    def test_clear_button_feedback_and_system_labels(self):
+        for mask, text in EXPECTED_BUTTON_LABELS.items():
+            self.assert_target_text(self.frame(forced_buttons=mask), text)
+        self.assert_target_text(self.frame(ui_flags=N64.FLY_UI_CHORD_ARMED), "SYSTEM//HOLD")
+        self.assert_target_text(self.frame(ui_flags=N64.FLY_UI_SYSTEM), "GARMIN//SYSTEM")
+
+    def test_every_physically_reachable_key_shows_its_callout(self):
+        # Holding BACK is the Garmin escape chord, so this overlay passes that
+        # frame straight through and BACK's own callout is not reachable until
+        # five-key ownership lands; the other four are pressed for real here.
+        for mask, text in EXPECTED_BUTTON_LABELS.items():
+            result = N64.emulate_display(self.bundle, pressed_mask=mask)
+            if mask == 4:
+                self.assertFalse(result["eligible"])
+                self.assertTrue(result["framebuffer_unchanged"])
+                continue
+            self.assertEqual(mask, result["buttons"])
+            self.assert_target_text(result["framebuffer"], text)
+
+    def test_idle_frame_names_every_key_at_its_physical_height(self):
+        idle = self.frame()
+        layout = N64.atlas_layout()
+        for key, word in enumerate(EXPECTED_IDLE_CALLOUTS):
+            self.assertEqual([tuple(layout["callouts"][key])],
+                             N64.find_text(idle, word), word)
+
+    def test_title_and_the_full_state_name_are_rendered(self):
+        names = ("REST", "MOVE", "AROUSE", "QUIET")
+        result = N64.emulate_display(self.bundle)
+        idle = result["framebuffer"]
+        self.assert_target_text(idle, "FLYOS // N64")
+        self.assert_target_text(idle, names[result["state"]])
+        for other in set(names) - {names[result["state"]]}:
+            self.assertEqual([], N64.find_text(idle, other), other)
+        self.assertEqual([], N64.find_text(idle, "SYSTEM//HOLD"))
+        self.assertEqual([], N64.find_text(idle, "LIGHT // LUX"))
+
+    def test_system_session_outranks_a_held_chord_and_a_pressed_key(self):
+        both = self.frame(pressed_mask=1, ui_flags=N64.FLY_UI_SYSTEM | N64.FLY_UI_CHORD_ARMED)
+        self.assert_target_text(both, "GARMIN//SYSTEM")
+        self.assertEqual([], N64.find_text(both, "SYSTEM//HOLD"))
+        self.assertEqual([], N64.find_text(both, "LIGHT // LUX"))
+
+    def test_usb_mass_storage_has_no_presentation_of_its_own_yet(self):
+        # Task 5 owns USB detach; FLY_UI_USB is wired through but must not
+        # silently invent a label here.
+        self.assertEqual(N64.sha256(self.frame()),
+                         N64.sha256(self.frame(ui_flags=N64.FLY_UI_USB)))
+        self.assertEqual(1, N64.emulate_display(self.bundle, usb_state=3)["ui_flags"])
+
+    def test_every_rendered_pixel_stays_inside_the_98_pixel_safe_circle(self):
+        for fixture in ({}, {"pressed_mask": 2}, {"ui_flags": N64.FLY_UI_SYSTEM},
+                        {"forced_activation": (56, 700)}):
             with self.subTest(fixture=fixture):
-                new_result = N64.emulate_display(self.bundle, **fixture)
-                old_result = OLD_N64.emulate(self.old_bundle, **fixture)
-                self.assertEqual(old_result["framebuffer_sha256"], new_result["framebuffer_sha256"])
-                self.assertEqual(old_result["dirty_calls"], new_result["dirty_calls"])
-                self.assertEqual(old_result["eligible"], new_result["eligible"])
-
-    def test_view_fixtures_match_the_old_home_fixtures(self):
-        for view in ("empty", "malformed", "cycle", "too_long", "not_home", "hidden_match",
-                     "multiple", "finder_mismatch", "false_first_visible", "root_mutation"):
-            with self.subTest(view=view):
-                new_result = N64.emulate_display(self.bundle, view=view)
-                old_result = OLD_N64.emulate(self.old_bundle, home=view)
-                self.assertEqual(old_result["framebuffer_sha256"], new_result["framebuffer_sha256"])
-                self.assertEqual(old_result["eligible"], new_result["eligible"])
+                result = N64.emulate_display(self.bundle, **fixture)
+                self.assertTrue(result["safe_radius"])
+                self.assertTrue(result["all_pixels_reviewed_palette"])
+                self.assertEqual(64, result["verified_neuron_cells"])
 
 
 class KeySequenceTests(unittest.TestCase):
