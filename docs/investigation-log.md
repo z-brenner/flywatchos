@@ -1057,6 +1057,8 @@
 - **LIVE-DEMONSTRATED follow-up:** with external illumination, START, BACK,
   DOWN, and UP each displayed the correct respective footer label (`START //
   MOTOR BURST`, `BACK // MODE`, `DOWN // CALM`, `UP // PULSE`). Those four
-  FlyOS input paths are working on hardware. LIGHT's native Garmin backlight
-  remains suppressed as designed; its `LUX` presentation was not separately
-  reported. No restore or subsequent watch write has been attempted.
+  FlyOS input paths are working on hardware. A further check confirmed that
+  holding LIGHT displays `LIGHT // LUX`, completing live proof of all five
+  FlyOS input mappings. The LIGHT path itself works; the remaining defect is
+  specifically that FlyOS ownership suppresses Garmin's native backlight
+  action. No restore or subsequent watch write has been attempted.
