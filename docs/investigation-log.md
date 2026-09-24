@@ -1033,3 +1033,27 @@
   No private device identifiers or personal files are included.
 - Installation has not yet been observed. No host reset, on-watch selection,
   repeat write, or restore action was performed.
+
+## 2026-09-24 - atlas-shell 13.82 installed and booted
+
+- The user gave fresh exact approval for synthetic 13.82 after disclosure of
+  the 5,120,675-byte artifact, SHA-256
+  `7bcfc380c2d6eb9ceb136ae03d19b016981bf484e8bc559455adcd958e8df4f9`,
+  application/QSPI rewrite regions, conditional restore, and low-but-nonzero
+  unrecoverable-brick risk.
+- Read-only preflight confirmed a mounted Forerunner 245 non-Music part
+  `006-B3076-00`, public software 1370, sufficient free space, and no pending
+  `GUPDATE.GCD`. The user manually copied the candidate; the controller did not
+  perform the write and did not run the locked staging helper. A full read-back
+  matched the approved size and SHA-256 before safe eject.
+- **LIVE-DEMONSTRATED:** the watch prepared and installed the update, booted,
+  and displayed the new atlas-shell home page. The user reports preferring the
+  new page while also finding it imperfect and difficult to inspect in the dim
+  display.
+- **LIVE-DEMONSTRATED / expected behavior:** pressing LIGHT on stable HOME did
+  not activate Garmin's backlight. This agrees with the Tier-A design, which
+  gives all five HOME key sequences to FlyOS and maps LIGHT to `LUX` rather
+  than passing the event to Garmin.
+- START/BACK/DOWN/UP behavior is not yet live-confirmed because the user could
+  not see the dim display well enough to evaluate it. No restore or subsequent
+  watch write has been attempted.
