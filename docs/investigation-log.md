@@ -1054,6 +1054,9 @@
   not activate Garmin's backlight. This agrees with the Tier-A design, which
   gives all five HOME key sequences to FlyOS and maps LIGHT to `LUX` rather
   than passing the event to Garmin.
-- START/BACK/DOWN/UP behavior is not yet live-confirmed because the user could
-  not see the dim display well enough to evaluate it. No restore or subsequent
-  watch write has been attempted.
+- **LIVE-DEMONSTRATED follow-up:** with external illumination, START, BACK,
+  DOWN, and UP each displayed the correct respective footer label (`START //
+  MOTOR BURST`, `BACK // MODE`, `DOWN // CALM`, `UP // PULSE`). Those four
+  FlyOS input paths are working on hardware. LIGHT's native Garmin backlight
+  remains suppressed as designed; its `LUX` presentation was not separately
+  reported. No restore or subsequent watch write has been attempted.
