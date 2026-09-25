@@ -32,6 +32,13 @@ STAGE2_LITERAL_OFFSET = STAGE2_LITERAL_VA - APP_BASE
 EXPECTED_RESET_BYTES = bytes.fromhex(
     "72b64ff0000080f31488bff36f8fdff808d002480047"
 )
+REQUIRED_GHIDRA_OUTPUTS = (
+    "ghidra-inventory.json",
+    "decompilation.txt",
+    "headless.log",
+    "script.log",
+)
+GHIDRA_INVENTORY_SCHEMA = "flyos.fr245.k28-reset-inventory.v1"
 
 
 @dataclass(frozen=True)
@@ -127,11 +134,121 @@ def _root_report(root: ResetRoot) -> dict:
     }
 
 
+def _require_list(report: dict, name: str) -> list:
+    value = report.get(name)
+    if not isinstance(value, list):
+        raise ValueError(f"inventory field {name!r} must be a list")
+    return value
+
+
+def validate_ghidra_inventory(report: dict, root: ResetRoot) -> None:
+    if not isinstance(report, dict):
+        raise ValueError("Ghidra inventory must be an object")
+    if report.get("schema") != GHIDRA_INVENTORY_SCHEMA:
+        raise ValueError("Ghidra inventory schema mismatch")
+    program = report.get("program")
+    if not isinstance(program, dict):
+        raise ValueError("Ghidra inventory program must be an object")
+    if program.get("sha256") != root.image_sha256:
+        raise ValueError("program SHA-256 does not match pinned image")
+    if program.get("name") != "stream_01_fw_all_bin.bin":
+        raise ValueError("program name mismatch")
+    if program.get("base") != f"0x{APP_BASE:08x}":
+        raise ValueError("program base mismatch")
+    if program.get("end_exclusive") != f"0x{APP_END_EXCLUSIVE:08x}":
+        raise ValueError("program end mismatch")
+    expected_roots = [
+        f"0x{root.reset_handler:08x}",
+        f"0x{root.stage2_entry:08x}",
+    ]
+    if report.get("roots") != expected_roots:
+        raise ValueError("inventory roots do not match pinned reset chain")
+    if report.get("max_depth") != 3:
+        raise ValueError("inventory traversal depth mismatch")
+    for name in ("analysis_complete", "cancelled"):
+        if not isinstance(report.get(name), bool):
+            raise ValueError(f"inventory field {name!r} must be boolean")
+    for name in ("unresolved_seed_count", "unresolved_function_count"):
+        value = report.get(name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"inventory field {name!r} must be a non-negative integer")
+    functions = _require_list(report, "functions")
+    entries = []
+    required_function_fields = {
+        "entry",
+        "end_inclusive",
+        "sha256",
+        "depth",
+        "direct_calls",
+        "indirect_control_flow",
+        "literal_references",
+        "mmio_references",
+        "backward_branches",
+    }
+    for function in functions:
+        if not isinstance(function, dict) or not required_function_fields <= function.keys():
+            raise ValueError("inventory function schema mismatch")
+        entry = function["entry"]
+        if not isinstance(entry, str) or not entry.startswith("0x"):
+            raise ValueError("inventory function entry mismatch")
+        entries.append(int(entry, 16))
+        if not isinstance(function["sha256"], str) or len(function["sha256"]) != 64:
+            raise ValueError("inventory function SHA-256 mismatch")
+        if not isinstance(function["depth"], int) or function["depth"] < 0:
+            raise ValueError("inventory function depth mismatch")
+        for name in (
+            "direct_calls",
+            "indirect_control_flow",
+            "literal_references",
+            "mmio_references",
+            "backward_branches",
+        ):
+            if not isinstance(function[name], list):
+                raise ValueError(f"inventory function field {name!r} must be a list")
+    if entries != sorted(entries) or len(entries) != len(set(entries)):
+        raise ValueError("inventory functions must be unique and address-sorted")
+    for name in (
+        "computed_mmio",
+        "unknown_mmio_widths",
+        "unknown_mmio_values",
+        "unbounded_polls",
+        "unknown_memory_ranges",
+    ):
+        _require_list(report, name)
+
+
+def load_ghidra_run(run: Path, root: ResetRoot) -> dict:
+    missing = [name for name in REQUIRED_GHIDRA_OUTPUTS if not (run / name).is_file()]
+    if missing:
+        raise ValueError(f"missing evidence output: {missing}")
+    logs = "\n".join(
+        (run / name).read_text(encoding="utf-8", errors="replace")
+        for name in ("headless.log", "script.log")
+    )
+    lowered = logs.lower()
+    if "script error" in lowered or "post-script" in lowered:
+        raise ValueError("Ghidra post-script error")
+    if "output collision" in lowered:
+        raise ValueError("Ghidra evidence output collision")
+    try:
+        report = json.loads(
+            (run / "ghidra-inventory.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid Ghidra inventory: {error}") from error
+    validate_ghidra_inventory(report, root)
+    return report
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     root = commands.add_parser("root", help="write the pinned reset-root report")
     root.add_argument("--output", required=True, type=Path)
+    inventory = commands.add_parser(
+        "inventory", help="validate a private Ghidra evidence run"
+    )
+    inventory.add_argument("--run", required=True, type=Path)
     return parser
 
 
@@ -142,6 +259,20 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "root":
             write_new_json(arguments.output, _root_report(load_reset_root(repository)))
             print(arguments.output)
+            return 0
+        if arguments.command == "inventory":
+            report = load_ghidra_run(arguments.run, load_reset_root(repository))
+            print(
+                json.dumps(
+                    {
+                        "source_sha256": report["program"]["sha256"],
+                        "roots": report["roots"],
+                        "function_count": len(report["functions"]),
+                        "analysis_complete": report["analysis_complete"],
+                    },
+                    sort_keys=True,
+                )
+            )
             return 0
     except (FileExistsError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
