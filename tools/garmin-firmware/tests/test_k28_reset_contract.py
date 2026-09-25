@@ -10,6 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 RUNNER = TOOLS / "run_k28_reset_contract.ps1"
+RECEIPT = ROOT / "flyos" / "target" / "k28" / "contracts" / "fr245_1370_reset_root.json"
+RESET_DOC = ROOT / "docs" / "standalone-reset-contract.md"
+K28_README = ROOT / "flyos" / "target" / "k28" / "README.md"
 sys.path.insert(0, str(TOOLS))
 
 import k28_reset_contract as contract  # noqa: E402
@@ -265,6 +268,33 @@ class ContractGateTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, encoded)
         self.assertEqual("11" * 32, receipt["functions"][0]["sha256"])
+
+
+class ContractDocumentationTests(unittest.TestCase):
+    def test_public_docs_match_committed_receipt(self):
+        receipt = json.loads(RECEIPT.read_text(encoding="utf-8"))
+        document = RESET_DOC.read_text(encoding="utf-8")
+        self.assertIn(receipt["source_sha256"], document)
+        self.assertIn(f"`go={str(receipt['go']).lower()}`", document)
+        for name, value in receipt["gates"].items():
+            self.assertIn(
+                f"| `{name}` | `{str(value).lower()}` |", document
+            )
+
+    def test_public_docs_and_receipt_have_no_private_evidence_paths(self):
+        combined = (
+            RESET_DOC.read_text(encoding="utf-8")
+            + RECEIPT.read_text(encoding="utf-8")
+        ).lower()
+        self.assertNotIn("c:\\\\users", combined)
+        self.assertNotIn("artifacts/firmware", combined)
+        self.assertNotIn("decompilation.txt", combined)
+
+    def test_k28_readme_links_the_reset_contract_and_keeps_install_blocked(self):
+        readme = K28_README.read_text(encoding="utf-8")
+        self.assertIn("../../../docs/standalone-reset-contract.md", readme)
+        self.assertIn("`go=false`", readme)
+        self.assertIn("not safe to install", readme)
 
 
 if __name__ == "__main__":
