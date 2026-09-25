@@ -1,0 +1,53 @@
+{
+  "beat_counts": {
+    "one": 979,
+    "two": 28
+  },
+  "classified_rows_sha256": "4ff7d02133d0c3483ff70bddd3ab6181d8863abbe263ab62473192a46826ea9e",
+  "direction_counts": {
+    "read": 408,
+    "write": 599
+  },
+  "evidence_counts": {
+    "computed_rows": 1065,
+    "computed_unique_instructions": 966,
+    "direct_reference_rows": 598,
+    "direct_unique_instructions": 595,
+    "materialization_rows": 31,
+    "overlapping_access_instructions": 554,
+    "unique_access_instructions": 1007
+  },
+  "gates": {
+    "address_materializations_excluded": true,
+    "computed_accesses_classified": true,
+    "direct_references_classified": true,
+    "inventory_snapshot_exact": true,
+    "source_exact": true
+  },
+  "instruction_classes": {
+    "ldr": 217,
+    "ldrb": 178,
+    "ldrd": 5,
+    "ldrh": 5,
+    "ldrsb": 2,
+    "str": 463,
+    "strb": 88,
+    "strd": 23,
+    "strh": 25,
+    "vldr_s": 1
+  },
+  "inventory_sha256": "afd7c6ecb339e52d4af37af9d6c46825d4cd4d8a6c0718a7662022940c27b0e9",
+  "materialization_classes": {
+    "ldr_literal": 28,
+    "register_move": 3
+  },
+  "mmio_widths_closed": true,
+  "schema": "flyos.fr245.k28-mmio-widths.v1",
+  "source_sha256": "b45be1baf98999af10f073bef52b284beb2aea6abbb7cde2ffa59fb6bcedeab6",
+  "transfer_classes": {
+    "byte": 268,
+    "halfword": 30,
+    "paired_words": 28,
+    "word": 681
+  }
+}

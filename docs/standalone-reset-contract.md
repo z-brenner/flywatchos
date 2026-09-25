@@ -25,6 +25,15 @@ resolves all nine indirect sites in the bounded closure: the reset transfer,
 four guarded table branches, and four callback sites. No hardware meaning is
 inferred from those control transfers.
 
+A second hash-bound proof decodes the union of direct and computed-access
+evidence against the same pinned image and exact inventory bytes. It classifies
+all 1,007 unique memory-access instructions: 268 byte accesses, 30 halfword
+accesses, 681 word accesses, and 28 paired-word accesses. The paired forms are
+two 32-bit bus beats, not one 64-bit MMIO transaction. The proof also separates
+31 address-materialization references (28 PC-relative literal loads and three
+register moves) from actual memory transactions. This closes access widths
+only; it does not establish addresses, values, ordering, or hardware meaning.
+
 ## Gate results
 
 These values are copied from the committed sanitized receipt.
@@ -36,7 +45,7 @@ These values are copied from the committed sanitized receipt.
 | `memory_ranges_closed` | `false` | Computed memory operations still have unresolved target ranges. |
 | `mmio_addresses_closed` | `false` | Computed accesses prevent a complete MMIO-address inventory. |
 | `mmio_values_closed` | `false` | Required write values and their meanings are not proved. |
-| `mmio_widths_closed` | `false` | Required access widths are not proved for all MMIO evidence. |
+| `mmio_widths_closed` | `true` | Every instruction in the bounded MMIO evidence set has a hash-bound decoded access width. |
 | `pinned_source` | `true` | The analysis input matches the exact official application SHA-256. |
 | `polls_bounded` | `false` | Backward branches have not been proved bounded or classified as non-poll loops. |
 | `reset_root_exact` | `true` | The reset handler and stage-two entry match the pinned root. |
@@ -58,6 +67,10 @@ poll loop.
   The four switch tables have explicit guards and bounded target sets; every
   reachable callback argument is either null or the Thumb pointer
   `0x0001a299` targeting `0x0001a298`.
+- All 1,007 unique access instructions in the bounded MMIO evidence set are
+  classified by direction and width: 408 reads and 599 writes. Thirty-one other
+  inventory references are proved to materialize addresses rather than perform
+  MMIO transactions.
 - The sanitized receipt contains no firmware bytes, instruction text, private
   filesystem paths, or decompiler output.
 
@@ -73,8 +86,9 @@ poll loop.
 
 - The minimal clock, watchdog, power, panel, button, storage, and USB sequences
   required by standalone FlyOS.
-- The exact ordering, preconditions, widths, and values for all required MMIO
-  transactions.
+- The exact addresses, ordering, preconditions, values, and hardware meaning
+  for all required MMIO transactions. Access widths alone are closed for the
+  bounded evidence set.
 - Bounds and exit conditions for every startup polling loop.
 - A proved complete SRAM map and a demonstrated nonboot recovery path.
 
@@ -92,11 +106,13 @@ The private evidence remains local. Its SHA-256 receipts are:
 - Ghidra inventory: `afd7c6ecb339e52d4af37af9d6c46825d4cd4d8a6c0718a7662022940c27b0e9`
 - Control-flow receipt file: `26b254184619ca42341857575b7d0ce5f3bca4a7e047d0417c3d75c7a97e21e8`
 - Control-flow canonical content: `6f68ae0c2deb2799353e53202a5bb70d194d52808535705edfa0c66dd9b537d3`
+- MMIO-width receipt file: `1d90d2fc8e0773fabc78639d5f7e25bb6f5d9c1fc9036401ca16d235ea185597`
+- MMIO-width canonical content: `9eede8eb5fa0a4965033c72f8cea6f3984bef3bdbe832ea6e5b2be2af2f8cccb`
 - Private analysis text: `fb7623b5cd91cd21fb9a617a164d5b3a8a0cfc8e33b78efe6a265dc86a44f0e3`
 - Headless analysis log: `0d5f73c6f6c6da99a520c2064b07a28eccda65ae5b632698f2ae0c832a5f1cb3`
 - Script log: `a6eb00b5559b8a50e2e53e1fd957891e3ae55775ce8516327f3d4b36bed39d22`
-- Sanitized committed receipt: `cd344a9c3e9fdc66d25be76ed1db9db270c8db8ae6770cec3847bc52556d294c`
+- Sanitized committed receipt: `1f461d90f23a64aef87ce3c76876f9cf3f795616e8832e7afb942e67acf2fb6e`
 
-The next safe step is separate offline evidence work on the five remaining
+The next safe step is separate offline evidence work on the four remaining
 false hardware-semantics gates. No result in this report changes the
 watch-safety or manual-flash boundary.

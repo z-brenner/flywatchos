@@ -12,6 +12,7 @@ TOOLS = ROOT / "tools" / "garmin-firmware"
 RUNNER = TOOLS / "run_k28_reset_contract.ps1"
 RECEIPT = ROOT / "flyos" / "target" / "k28" / "contracts" / "fr245_1370_reset_root.json"
 CONTROL_FLOW_RECEIPT = ROOT / "flyos" / "target" / "k28" / "contracts" / "fr245_1370_control_flow.json"
+MMIO_WIDTH_RECEIPT = ROOT / "flyos" / "target" / "k28" / "contracts" / "fr245_1370_mmio_widths.json"
 RESET_DOC = ROOT / "docs" / "standalone-reset-contract.md"
 K28_README = ROOT / "flyos" / "target" / "k28" / "README.md"
 ACTUAL_RUN = (
@@ -25,6 +26,7 @@ sys.path.insert(0, str(TOOLS))
 
 import k28_reset_contract as contract  # noqa: E402
 import k28_control_flow as flow  # noqa: E402
+import k28_mmio_widths as widths  # noqa: E402
 
 
 def fixture_root():
@@ -293,6 +295,57 @@ class GhidraInventoryTests(unittest.TestCase):
             )
             self.assertFalse(receipt["go"])
 
+    def test_contract_cli_consumes_both_hash_bound_proofs(self):
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        control_proof = flow.build_control_flow_proof(
+            image, inventory, inventory_bytes
+        )
+        width_proof = widths.build_mmio_width_proof(
+            image, inventory, inventory_bytes
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            control_path = base / "control.json"
+            width_path = base / "widths.json"
+            output = base / "contract.json"
+            control_path.write_text(
+                json.dumps(control_proof, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            width_path.write_text(
+                json.dumps(width_proof, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(TOOLS / "k28_reset_contract.py"),
+                    "contract",
+                    "--run",
+                    str(ACTUAL_RUN),
+                    "--control-flow-proof",
+                    str(control_path),
+                    "--mmio-width-proof",
+                    str(width_path),
+                    "--output",
+                    str(output),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            receipt = json.loads(output.read_text(encoding="utf-8"))
+            self.assertTrue(receipt["gates"]["control_flow_closed"])
+            self.assertTrue(receipt["gates"]["mmio_widths_closed"])
+            self.assertEqual(
+                widths.proof_sha256(width_proof),
+                receipt["mmio_width_proof_sha256"],
+            )
+            self.assertFalse(receipt["go"])
+
 
 class ContractGateTests(unittest.TestCase):
     def test_complete_fixture_passes_every_gate(self):
@@ -329,6 +382,39 @@ class ContractGateTests(unittest.TestCase):
         ):
             self.assertFalse(report["gates"][gate])
         self.assertEqual(flow.proof_sha256(proof), report["control_flow_proof_sha256"])
+        self.assertFalse(report["go"])
+
+    def test_exact_width_proof_closes_only_width_gate(self):
+        root = contract.load_reset_root(ROOT)
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        control_proof = flow.build_control_flow_proof(
+            image, inventory, inventory_bytes
+        )
+        width_proof = widths.build_mmio_width_proof(
+            image, inventory, inventory_bytes
+        )
+        report = contract.build_contract(
+            root,
+            inventory,
+            control_flow_proof=control_proof,
+            mmio_width_proof=width_proof,
+            inventory_bytes=inventory_bytes,
+            image=image,
+        )
+        self.assertTrue(report["gates"]["control_flow_closed"])
+        self.assertTrue(report["gates"]["mmio_widths_closed"])
+        for gate in (
+            "mmio_addresses_closed",
+            "mmio_values_closed",
+            "polls_bounded",
+            "memory_ranges_closed",
+        ):
+            self.assertFalse(report["gates"][gate])
+        self.assertEqual(
+            widths.proof_sha256(width_proof),
+            report["mmio_width_proof_sha256"],
+        )
         self.assertFalse(report["go"])
 
     def test_control_flow_proof_requires_matching_image_and_inventory(self):
@@ -417,22 +503,36 @@ class ContractGateTests(unittest.TestCase):
             contract.build_contract(fixture_root(), branch)
 
     def test_computed_mmio_and_unbounded_polling_fail_independently(self):
-        for field, value, gate in (
-            ("computed_mmio", ["0x40000000+r3"], "mmio_addresses_closed"),
-            ("unbounded_polls", ["0x000191f0"], "polls_bounded"),
+        for field, value, false_gates in (
+            (
+                "computed_mmio",
+                ["0x40000000+r3"],
+                {"mmio_addresses_closed", "mmio_widths_closed"},
+            ),
+            ("unbounded_polls", ["0x000191f0"], {"polls_bounded"}),
         ):
             with self.subTest(field=field):
                 inventory = fixture_inventory()
                 inventory[field] = value
                 report = contract.build_contract(fixture_root(), inventory)
-                self.assertFalse(report["gates"][gate])
                 self.assertFalse(report["go"])
-                other_gates = {
-                    name: result
-                    for name, result in report["gates"].items()
-                    if name != gate
-                }
-                self.assertTrue(all(other_gates.values()))
+                self.assertEqual(
+                    false_gates,
+                    {
+                        name
+                        for name, result in report["gates"].items()
+                        if not result
+                    },
+                )
+
+    def test_computed_only_inventory_sanitizes_without_width_proof(self):
+        inventory = fixture_inventory()
+        inventory["computed_mmio"] = ["0x40000000+r3"]
+        report = contract.build_contract(fixture_root(), inventory)
+        self.assertFalse(report["gates"]["mmio_widths_closed"])
+        receipt = contract.sanitize_contract(report)
+        self.assertFalse(receipt["gates"]["mmio_widths_closed"])
+        self.assertFalse(receipt["go"])
 
     def test_incomplete_analysis_and_unknown_mmio_facts_fail_independently(self):
         for field, value, gate in (
@@ -482,6 +582,35 @@ class ContractGateTests(unittest.TestCase):
         self.assertEqual(flow.proof_sha256(proof), receipt["control_flow_proof_sha256"])
         self.assertNotIn("control_flow_proof", receipt)
 
+    def test_public_receipt_exposes_only_mmio_width_proof_digest(self):
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        width_proof = widths.build_mmio_width_proof(
+            image, inventory, inventory_bytes
+        )
+        complete = contract.build_contract(
+            contract.load_reset_root(ROOT),
+            inventory,
+            mmio_width_proof=width_proof,
+            inventory_bytes=inventory_bytes,
+            image=image,
+        )
+        receipt = contract.sanitize_contract(complete)
+        self.assertEqual(
+            widths.proof_sha256(width_proof),
+            receipt["mmio_width_proof_sha256"],
+        )
+        self.assertNotIn("mmio_width_proof", receipt)
+
+    def test_public_sanitizer_requires_width_digest_for_closed_width_evidence(self):
+        inventory, _ = actual_inventory()
+        complete = contract.build_contract(
+            contract.load_reset_root(ROOT), inventory
+        )
+        complete["gates"]["mmio_widths_closed"] = True
+        with self.assertRaisesRegex(ValueError, "MMIO-width proof digest"):
+            contract.sanitize_contract(complete)
+
     def test_public_sanitizer_requires_proof_digest_for_closed_indirect_sites(self):
         inventory = fixture_indirect_inventory()
         complete = contract.build_contract(fixture_root(), inventory)
@@ -514,6 +643,7 @@ class ContractDocumentationTests(unittest.TestCase):
             RESET_DOC.read_text(encoding="utf-8")
             + RECEIPT.read_text(encoding="utf-8")
             + CONTROL_FLOW_RECEIPT.read_text(encoding="utf-8")
+            + MMIO_WIDTH_RECEIPT.read_text(encoding="utf-8")
         ).lower()
         self.assertNotIn("c:\\\\users", combined)
         self.assertNotIn("artifacts/firmware", combined)
@@ -528,6 +658,17 @@ class ContractDocumentationTests(unittest.TestCase):
             receipt["control_flow_proof_sha256"], flow.proof_sha256(proof)
         )
         self.assertTrue(receipt["gates"]["control_flow_closed"])
+        self.assertFalse(receipt["go"])
+
+    def test_committed_mmio_width_receipt_is_bound_to_reset_receipt(self):
+        receipt = json.loads(RECEIPT.read_text(encoding="utf-8"))
+        proof = json.loads(MMIO_WIDTH_RECEIPT.read_text(encoding="utf-8"))
+        self.assertEqual(widths.SCHEMA, proof["schema"])
+        self.assertEqual(receipt["source_sha256"], proof["source_sha256"])
+        self.assertEqual(
+            receipt["mmio_width_proof_sha256"], widths.proof_sha256(proof)
+        )
+        self.assertTrue(receipt["gates"]["mmio_widths_closed"])
         self.assertFalse(receipt["go"])
 
     def test_k28_readme_links_the_reset_contract_and_keeps_install_blocked(self):

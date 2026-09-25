@@ -875,7 +875,7 @@
     "memory_ranges_closed": false,
     "mmio_addresses_closed": false,
     "mmio_values_closed": false,
-    "mmio_widths_closed": false,
+    "mmio_widths_closed": true,
     "pinned_source": true,
     "polls_bounded": false,
     "reset_root_exact": true
@@ -890,6 +890,7 @@
     "unresolved_function_count": 0,
     "unresolved_seed_count": 0
   },
+  "mmio_width_proof_sha256": "9eede8eb5fa0a4965033c72f8cea6f3984bef3bdbe832ea6e5b2be2af2f8cccb",
   "reset_handler": "0x000031f0",
   "schema": "flyos.fr245.k28-reset-contract.v1",
   "source_sha256": "b45be1baf98999af10f073bef52b284beb2aea6abbb7cde2ffa59fb6bcedeab6",

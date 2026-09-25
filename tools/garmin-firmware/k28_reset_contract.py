@@ -319,6 +319,7 @@ def build_contract(
     inventory: dict,
     *,
     control_flow_proof: dict | None = None,
+    mmio_width_proof: dict | None = None,
     inventory_bytes: bytes | None = None,
     image: bytes | None = None,
 ) -> dict:
@@ -328,11 +329,13 @@ def build_contract(
         function["indirect_control_flow"] for function in functions
     )
     control_flow_proof_sha256 = None
-    if control_flow_proof is not None:
+    mmio_width_proof_sha256 = None
+    if control_flow_proof is not None or mmio_width_proof is not None:
         if inventory_bytes is None or image is None:
             raise ValueError(
-                "control-flow proof requires source image and inventory bytes"
+                "evidence proofs require source image and inventory bytes"
             )
+    if control_flow_proof is not None:
         import k28_control_flow
 
         k28_control_flow.validate_control_flow_proof(
@@ -340,6 +343,15 @@ def build_contract(
         )
         control_flow_proof_sha256 = k28_control_flow.proof_sha256(
             control_flow_proof
+        )
+    if mmio_width_proof is not None:
+        import k28_mmio_widths
+
+        k28_mmio_widths.validate_mmio_width_proof(
+            image, inventory, inventory_bytes, mmio_width_proof
+        )
+        mmio_width_proof_sha256 = k28_mmio_widths.proof_sha256(
+            mmio_width_proof
         )
     gates = {
         "pinned_source": inventory["program"]["sha256"] == root.image_sha256,
@@ -355,8 +367,12 @@ def build_contract(
         "control_flow_closed": not has_indirect_control_flow
         or control_flow_proof_sha256 is not None,
         "mmio_addresses_closed": not inventory["computed_mmio"],
-        "mmio_widths_closed": not inventory["unknown_mmio_widths"]
-        and not any(function["mmio_references"] for function in functions),
+        "mmio_widths_closed": mmio_width_proof_sha256 is not None
+        or (
+            not inventory["computed_mmio"]
+            and not inventory["unknown_mmio_widths"]
+            and not any(function["mmio_references"] for function in functions)
+        ),
         "mmio_values_closed": not inventory["unknown_mmio_values"]
         and not any(function["mmio_references"] for function in functions),
         "polls_bounded": not inventory["unbounded_polls"]
@@ -383,6 +399,8 @@ def build_contract(
     }
     if control_flow_proof_sha256 is not None:
         report["control_flow_proof_sha256"] = control_flow_proof_sha256
+    if mmio_width_proof_sha256 is not None:
+        report["mmio_width_proof_sha256"] = mmio_width_proof_sha256
     return report
 
 
@@ -447,6 +465,23 @@ def sanitize_contract(contract: dict) -> dict:
     if proof_digest is not None and not gates.get("control_flow_closed"):
         raise ValueError("control-flow proof digest contradicts an open gate")
 
+    inventory_counts = contract.get("inventory_counts")
+    if not isinstance(inventory_counts, dict):
+        raise ValueError("contract inventory counts must be an object")
+    width_evidence = bool(
+        inventory_counts.get("computed_mmio_count")
+        or inventory_counts.get("unknown_mmio_width_count")
+        or any(function["mmio_references"] for function in contract["functions"])
+    )
+    width_proof_digest = contract.get("mmio_width_proof_sha256")
+    if gates.get("mmio_widths_closed") and width_evidence:
+        if width_proof_digest is None:
+            raise ValueError(
+                "closed MMIO widths require an MMIO-width proof digest"
+            )
+    if width_proof_digest is not None and not gates.get("mmio_widths_closed"):
+        raise ValueError("MMIO-width proof digest contradicts an open gate")
+
     receipt = {
         "schema": "flyos.fr245.k28-reset-contract.v1",
         "source_sha256": contract["source_sha256"],
@@ -469,6 +504,11 @@ def sanitize_contract(contract: dict) -> dict:
             proof_digest,
             "control-flow proof SHA-256",
         )
+    if width_proof_digest is not None:
+        receipt["mmio_width_proof_sha256"] = _require_sha256(
+            width_proof_digest,
+            "MMIO-width proof SHA-256",
+        )
     return receipt
 
 
@@ -486,6 +526,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     contract.add_argument("--run", required=True, type=Path)
     contract.add_argument("--control-flow-proof", type=Path)
+    contract.add_argument("--mmio-width-proof", type=Path)
     contract.add_argument("--output", required=True, type=Path)
     return parser
 
@@ -516,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
             root = load_reset_root(repository)
             inventory = load_ghidra_run(arguments.run, root)
             proof = None
+            width_proof = None
             inventory_bytes = None
             image = None
             if arguments.control_flow_proof is not None:
@@ -531,10 +573,25 @@ def main(argv: list[str] | None = None) -> int:
                     arguments.run / "ghidra-inventory.json"
                 ).read_bytes()
                 image = pinned_image_path(repository).read_bytes()
+            if arguments.mmio_width_proof is not None:
+                try:
+                    width_proof = json.loads(
+                        arguments.mmio_width_proof.read_text(encoding="utf-8")
+                    )
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"invalid MMIO-width proof: {error}"
+                    ) from error
+                if inventory_bytes is None:
+                    inventory_bytes = (
+                        arguments.run / "ghidra-inventory.json"
+                    ).read_bytes()
+                    image = pinned_image_path(repository).read_bytes()
             report = build_contract(
                 root,
                 inventory,
                 control_flow_proof=proof,
+                mmio_width_proof=width_proof,
                 inventory_bytes=inventory_bytes,
                 image=image,
             )
