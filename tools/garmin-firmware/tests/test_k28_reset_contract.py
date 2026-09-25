@@ -202,5 +202,70 @@ class GhidraInventoryTests(unittest.TestCase):
             self.assertEqual(b"preserve", sentinel.read_bytes())
 
 
+class ContractGateTests(unittest.TestCase):
+    def test_complete_fixture_passes_every_gate(self):
+        report = contract.build_contract(fixture_root(), fixture_inventory())
+        self.assertTrue(all(report["gates"].values()))
+        self.assertTrue(report["go"])
+
+    def test_unresolved_control_flow_fails_closed(self):
+        inventory = fixture_inventory()
+        inventory["functions"][0]["indirect_control_flow"] = ["0x0001934c"]
+        report = contract.build_contract(fixture_root(), inventory)
+        self.assertFalse(report["gates"]["control_flow_closed"])
+        self.assertFalse(report["go"])
+
+    def test_computed_mmio_and_unbounded_polling_fail_independently(self):
+        for field, value, gate in (
+            ("computed_mmio", ["0x40000000+r3"], "mmio_addresses_closed"),
+            ("unbounded_polls", ["0x000191f0"], "polls_bounded"),
+        ):
+            with self.subTest(field=field):
+                inventory = fixture_inventory()
+                inventory[field] = value
+                report = contract.build_contract(fixture_root(), inventory)
+                self.assertFalse(report["gates"][gate])
+                self.assertFalse(report["go"])
+                other_gates = {
+                    name: result
+                    for name, result in report["gates"].items()
+                    if name != gate
+                }
+                self.assertTrue(all(other_gates.values()))
+
+    def test_incomplete_analysis_and_unknown_mmio_facts_fail_independently(self):
+        for field, value, gate in (
+            ("analysis_complete", False, "analysis_complete"),
+            ("unknown_mmio_widths", ["unknown"], "mmio_widths_closed"),
+            ("unknown_mmio_values", ["unknown"], "mmio_values_closed"),
+            ("unknown_memory_ranges", ["unknown"], "memory_ranges_closed"),
+        ):
+            with self.subTest(field=field):
+                inventory = fixture_inventory()
+                inventory[field] = value
+                report = contract.build_contract(fixture_root(), inventory)
+                self.assertFalse(report["gates"][gate])
+                self.assertFalse(report["go"])
+
+    def test_public_receipt_contains_no_code_or_private_paths(self):
+        complete = contract.build_contract(fixture_root(), fixture_inventory())
+        complete["private_evidence_path"] = (
+            r"C:\Users\zgbre\artifacts\firmware\private\decompilation.txt"
+        )
+        complete["functions"][0]["instruction_text"] = "str r0, [r1]"
+        receipt = contract.sanitize_contract(complete)
+        encoded = json.dumps(receipt).lower()
+        for forbidden in (
+            "decompilation",
+            "instruction_text",
+            "c:\\\\users",
+            "artifacts/firmware",
+            "stream_01_fw_all_bin.bin",
+            "str r0",
+        ):
+            self.assertNotIn(forbidden, encoded)
+        self.assertEqual("11" * 32, receipt["functions"][0]["sha256"])
+
+
 if __name__ == "__main__":
     unittest.main()

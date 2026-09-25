@@ -240,6 +240,85 @@ def load_ghidra_run(run: Path, root: ResetRoot) -> dict:
     return report
 
 
+def build_contract(root: ResetRoot, inventory: dict) -> dict:
+    validate_ghidra_inventory(inventory, root)
+    functions = inventory["functions"]
+    gates = {
+        "pinned_source": inventory["program"]["sha256"] == root.image_sha256,
+        "reset_root_exact": inventory["roots"]
+        == [
+            f"0x{root.reset_handler:08x}",
+            f"0x{root.stage2_entry:08x}",
+        ],
+        "analysis_complete": bool(inventory["analysis_complete"])
+        and not inventory["cancelled"]
+        and inventory["unresolved_seed_count"] == 0
+        and inventory["unresolved_function_count"] == 0,
+        "control_flow_closed": not any(
+            function["indirect_control_flow"] for function in functions
+        ),
+        "mmio_addresses_closed": not inventory["computed_mmio"],
+        "mmio_widths_closed": not inventory["unknown_mmio_widths"],
+        "mmio_values_closed": not inventory["unknown_mmio_values"],
+        "polls_bounded": not inventory["unbounded_polls"],
+        "memory_ranges_closed": not inventory["unknown_memory_ranges"],
+    }
+    return {
+        "schema_version": 1,
+        "source_sha256": root.image_sha256,
+        "reset_handler": f"0x{root.reset_handler:08x}",
+        "stage2_entry": f"0x{root.stage2_entry:08x}",
+        "functions": functions,
+        "inventory_counts": {
+            "unresolved_seed_count": inventory["unresolved_seed_count"],
+            "unresolved_function_count": inventory["unresolved_function_count"],
+            "computed_mmio_count": len(inventory["computed_mmio"]),
+            "unknown_mmio_width_count": len(inventory["unknown_mmio_widths"]),
+            "unknown_mmio_value_count": len(inventory["unknown_mmio_values"]),
+            "unbounded_poll_count": len(inventory["unbounded_polls"]),
+            "unknown_memory_range_count": len(inventory["unknown_memory_ranges"]),
+        },
+        "gates": gates,
+        "go": all(gates.values()),
+    }
+
+
+def sanitize_contract(contract: dict) -> dict:
+    public_functions = []
+    for function in contract["functions"]:
+        public_functions.append(
+            {
+                "entry": function["entry"],
+                "sha256": function["sha256"],
+                "depth": function["depth"],
+                "direct_call_count": len(function["direct_calls"]),
+                "indirect_control_flow_count": len(
+                    function["indirect_control_flow"]
+                ),
+                "literal_reference_count": len(function["literal_references"]),
+                "mmio_reference_count": len(function["mmio_references"]),
+                "backward_branch_count": len(function["backward_branches"]),
+            }
+        )
+    return {
+        "schema": "flyos.fr245.k28-reset-contract.v1",
+        "source_sha256": contract["source_sha256"],
+        "reset_handler": contract["reset_handler"],
+        "stage2_entry": contract["stage2_entry"],
+        "evidence_grades": {
+            "source_identity": "statically-confirmed",
+            "reset_root": "statically-confirmed",
+            "bounded_inventory": "statically-confirmed",
+            "hardware_semantics": "unknown-until-each-false-gate-is-closed",
+        },
+        "inventory_counts": dict(contract["inventory_counts"]),
+        "function_count": len(public_functions),
+        "functions": public_functions,
+        "gates": dict(contract["gates"]),
+        "go": bool(contract["go"]),
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -249,6 +328,11 @@ def _parser() -> argparse.ArgumentParser:
         "inventory", help="validate a private Ghidra evidence run"
     )
     inventory.add_argument("--run", required=True, type=Path)
+    contract = commands.add_parser(
+        "contract", help="write a sanitized reset-contract receipt"
+    )
+    contract.add_argument("--run", required=True, type=Path)
+    contract.add_argument("--output", required=True, type=Path)
     return parser
 
 
@@ -274,6 +358,19 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
+        if arguments.command == "contract":
+            root = load_reset_root(repository)
+            report = build_contract(root, load_ghidra_run(arguments.run, root))
+            receipt = sanitize_contract(report)
+            write_new_json(arguments.output, receipt)
+            false_gates = [
+                name for name, passed in receipt["gates"].items() if not passed
+            ]
+            print(
+                f"go={str(receipt['go']).lower()} "
+                f"false_gates={','.join(false_gates)} output={arguments.output}"
+            )
+            return 0 if receipt["go"] else 1
     except (FileExistsError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
