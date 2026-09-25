@@ -1,4 +1,5 @@
 {
+  "control_flow_proof_sha256": "6f68ae0c2deb2799353e53202a5bb70d194d52808535705edfa0c66dd9b537d3",
   "evidence_grades": {
     "bounded_inventory": "statically-confirmed",
     "hardware_semantics": "unknown-until-each-false-gate-is-closed",
@@ -870,7 +871,7 @@
   ],
   "gates": {
     "analysis_complete": true,
-    "control_flow_closed": false,
+    "control_flow_closed": true,
     "memory_ranges_closed": false,
     "mmio_addresses_closed": false,
     "mmio_values_closed": false,

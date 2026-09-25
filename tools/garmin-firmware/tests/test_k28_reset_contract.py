@@ -11,11 +11,20 @@ ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 RUNNER = TOOLS / "run_k28_reset_contract.ps1"
 RECEIPT = ROOT / "flyos" / "target" / "k28" / "contracts" / "fr245_1370_reset_root.json"
+CONTROL_FLOW_RECEIPT = ROOT / "flyos" / "target" / "k28" / "contracts" / "fr245_1370_control_flow.json"
 RESET_DOC = ROOT / "docs" / "standalone-reset-contract.md"
 K28_README = ROOT / "flyos" / "target" / "k28" / "README.md"
+ACTUAL_RUN = (
+    ROOT
+    / "artifacts"
+    / "firmware"
+    / "analysis"
+    / "standalone-reset-contract-2026-09-24-b"
+)
 sys.path.insert(0, str(TOOLS))
 
 import k28_reset_contract as contract  # noqa: E402
+import k28_control_flow as flow  # noqa: E402
 
 
 def fixture_root():
@@ -67,6 +76,43 @@ def fixture_inventory():
         "unbounded_polls": [],
         "unknown_memory_ranges": [],
     }
+
+
+def fixture_indirect_inventory():
+    inventory = fixture_inventory()
+    by_entry = {item["entry"]: item for item in inventory["functions"]}
+    for entry, (function_sha256, sites) in flow.EXPECTED_OWNERS.items():
+        function = by_entry.get(entry)
+        if function is None:
+            function = {
+                "entry": entry,
+                "end_inclusive": entry,
+                "sha256": function_sha256,
+                "depth": 2,
+                "direct_calls": [],
+                "indirect_control_flow": list(sites),
+                "literal_references": [],
+                "mmio_references": [],
+                "backward_branches": [],
+            }
+            inventory["functions"].append(function)
+        else:
+            function["sha256"] = function_sha256
+            function["indirect_control_flow"] = list(sites)
+        if entry == "0x0001aa34":
+            function["direct_calls"] = [
+                "0x0001a810",
+                "0x0001a868",
+                "0x0001a8dc",
+                "0x0001a940",
+            ]
+    inventory["functions"].sort(key=lambda item: item["entry"])
+    return inventory
+
+
+def actual_inventory():
+    inventory_bytes = (ACTUAL_RUN / "ghidra-inventory.json").read_bytes()
+    return json.loads(inventory_bytes), inventory_bytes
 
 
 class ResetRootTests(unittest.TestCase):
@@ -208,6 +254,45 @@ class GhidraInventoryTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
             self.assertEqual(b"preserve", sentinel.read_bytes())
 
+    def test_contract_cli_consumes_a_hash_bound_control_flow_proof(self):
+        inventory, inventory_bytes = actual_inventory()
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            image = contract.pinned_image_path(ROOT).read_bytes()
+            proof = flow.build_control_flow_proof(
+                image, inventory, inventory_bytes
+            )
+            proof_path = base / "proof.json"
+            proof_path.write_text(
+                json.dumps(proof, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            output = base / "contract.json"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(TOOLS / "k28_reset_contract.py"),
+                    "contract",
+                    "--run",
+                    str(ACTUAL_RUN),
+                    "--control-flow-proof",
+                    str(proof_path),
+                    "--output",
+                    str(output),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            receipt = json.loads(output.read_text(encoding="utf-8"))
+            self.assertTrue(receipt["gates"]["control_flow_closed"])
+            self.assertEqual(
+                flow.proof_sha256(proof), receipt["control_flow_proof_sha256"]
+            )
+            self.assertFalse(receipt["go"])
+
 
 class ContractGateTests(unittest.TestCase):
     def test_complete_fixture_passes_every_gate(self):
@@ -221,6 +306,76 @@ class ContractGateTests(unittest.TestCase):
         report = contract.build_contract(fixture_root(), inventory)
         self.assertFalse(report["gates"]["control_flow_closed"])
         self.assertFalse(report["go"])
+
+    def test_exact_control_flow_proof_closes_only_its_gate(self):
+        root = contract.load_reset_root(ROOT)
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        proof = flow.build_control_flow_proof(image, inventory, inventory_bytes)
+        report = contract.build_contract(
+            root,
+            inventory,
+            control_flow_proof=proof,
+            inventory_bytes=inventory_bytes,
+            image=image,
+        )
+        self.assertTrue(report["gates"]["control_flow_closed"])
+        for gate in (
+            "mmio_addresses_closed",
+            "mmio_widths_closed",
+            "mmio_values_closed",
+            "polls_bounded",
+            "memory_ranges_closed",
+        ):
+            self.assertFalse(report["gates"][gate])
+        self.assertEqual(flow.proof_sha256(proof), report["control_flow_proof_sha256"])
+        self.assertFalse(report["go"])
+
+    def test_control_flow_proof_requires_matching_image_and_inventory(self):
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        proof = flow.build_control_flow_proof(image, inventory, inventory_bytes)
+        for label, kwargs in (
+            ("missing image", {"inventory_bytes": inventory_bytes}),
+            ("missing inventory bytes", {"image": image}),
+            (
+                "wrong inventory bytes",
+                {"image": image, "inventory_bytes": inventory_bytes + b"\n"},
+            ),
+        ):
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    contract.build_contract(
+                        fixture_root(),
+                        inventory,
+                        control_flow_proof=proof,
+                        **kwargs,
+                    )
+
+    def test_original_proof_cannot_close_a_sanitized_inventory_copy(self):
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        proof = flow.build_control_flow_proof(image, inventory, inventory_bytes)
+        altered = copy.deepcopy(inventory)
+        for name in (
+            "computed_mmio",
+            "unknown_mmio_widths",
+            "unknown_mmio_values",
+            "unbounded_polls",
+            "unknown_memory_ranges",
+        ):
+            altered[name] = []
+        for function in altered["functions"]:
+            function["mmio_references"] = []
+            function["backward_branches"] = []
+        with self.assertRaisesRegex(ValueError, "inventory snapshot"):
+            contract.build_contract(
+                contract.load_reset_root(ROOT),
+                altered,
+                control_flow_proof=proof,
+                inventory_bytes=inventory_bytes,
+                image=image,
+            )
 
     def test_complete_gate_requires_root_records_and_in_bound_callee_coverage(self):
         empty = fixture_inventory()
@@ -312,6 +467,29 @@ class ContractGateTests(unittest.TestCase):
             self.assertNotIn(forbidden, encoded)
         self.assertEqual("11" * 32, receipt["functions"][0]["sha256"])
 
+    def test_public_receipt_exposes_only_control_flow_proof_digest(self):
+        inventory, inventory_bytes = actual_inventory()
+        image = contract.pinned_image_path(ROOT).read_bytes()
+        proof = flow.build_control_flow_proof(image, inventory, inventory_bytes)
+        complete = contract.build_contract(
+            contract.load_reset_root(ROOT),
+            inventory,
+            control_flow_proof=proof,
+            inventory_bytes=inventory_bytes,
+            image=image,
+        )
+        receipt = contract.sanitize_contract(complete)
+        self.assertEqual(flow.proof_sha256(proof), receipt["control_flow_proof_sha256"])
+        self.assertNotIn("control_flow_proof", receipt)
+
+    def test_public_sanitizer_requires_proof_digest_for_closed_indirect_sites(self):
+        inventory = fixture_indirect_inventory()
+        complete = contract.build_contract(fixture_root(), inventory)
+        complete["gates"]["control_flow_closed"] = True
+        complete["go"] = True
+        with self.assertRaisesRegex(ValueError, "control-flow proof digest"):
+            contract.sanitize_contract(complete)
+
     def test_public_sanitizer_rejects_private_text_in_hash_field(self):
         complete = contract.build_contract(fixture_root(), fixture_inventory())
         private_text = r"C:\Users\zgbre\private\decompilation"
@@ -335,10 +513,22 @@ class ContractDocumentationTests(unittest.TestCase):
         combined = (
             RESET_DOC.read_text(encoding="utf-8")
             + RECEIPT.read_text(encoding="utf-8")
+            + CONTROL_FLOW_RECEIPT.read_text(encoding="utf-8")
         ).lower()
         self.assertNotIn("c:\\\\users", combined)
         self.assertNotIn("artifacts/firmware", combined)
         self.assertNotIn("decompilation.txt", combined)
+
+    def test_committed_control_flow_receipt_is_bound_to_reset_receipt(self):
+        receipt = json.loads(RECEIPT.read_text(encoding="utf-8"))
+        proof = json.loads(CONTROL_FLOW_RECEIPT.read_text(encoding="utf-8"))
+        self.assertEqual(flow.SCHEMA, proof["schema"])
+        self.assertEqual(receipt["source_sha256"], proof["source_sha256"])
+        self.assertEqual(
+            receipt["control_flow_proof_sha256"], flow.proof_sha256(proof)
+        )
+        self.assertTrue(receipt["gates"]["control_flow_closed"])
+        self.assertFalse(receipt["go"])
 
     def test_k28_readme_links_the_reset_contract_and_keeps_install_blocked(self):
         readme = K28_README.read_text(encoding="utf-8")

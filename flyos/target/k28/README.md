@@ -7,9 +7,10 @@ consistent with the official reset vector `0x31f1`.
 
 The reset root is now pinned and independently gated in the
 [standalone reset-contract report](../../../docs/standalone-reset-contract.md).
-That analysis confirms the source identity and root addresses, but its current
-result is **`go=false`** because control flow, MMIO address/width/value facts,
-poll bounds, and memory ranges are not closed.
+That analysis confirms the source identity and root addresses. Its hash-bound
+control-flow receipt closes all nine indirect sites, but the overall result
+remains **`go=false`** because MMIO address/width/value facts, poll bounds, and
+memory ranges are not closed.
 
 The image initializes `.data` and `.bss`, runs the 64-neuron fixed-point fly,
 and renders `FLY LIVES` into a RAM-only 240x240 logical framebuffer. Its

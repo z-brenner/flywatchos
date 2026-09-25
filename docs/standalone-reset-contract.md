@@ -20,9 +20,10 @@ it would not authorize packaging or a live write.
 - Bounded inventory: 86 functions, maximum direct-call depth 3
 
 The reset vector, handler bytes, Thumb state, and stage-two pointer are
-statically confirmed against the pinned image. The reset trampoline ends in an
-indirect branch to the loaded stage-two address. No hardware meaning is inferred
-from that control transfer.
+statically confirmed against the pinned image. A separate hash-bound proof now
+resolves all nine indirect sites in the bounded closure: the reset transfer,
+four guarded table branches, and four callback sites. No hardware meaning is
+inferred from those control transfers.
 
 ## Gate results
 
@@ -31,7 +32,7 @@ These values are copied from the committed sanitized receipt.
 | Gate | Result | Meaning |
 | --- | --- | --- |
 | `analysis_complete` | `true` | The bounded analysis completed without cancellation or unresolved seeded functions. |
-| `control_flow_closed` | `false` | Indirect control flow remains in the bounded closure. |
+| `control_flow_closed` | `true` | All nine indirect sites are tied to exact source windows and resolved targets. |
 | `memory_ranges_closed` | `false` | Computed memory operations still have unresolved target ranges. |
 | `mmio_addresses_closed` | `false` | Computed accesses prevent a complete MMIO-address inventory. |
 | `mmio_values_closed` | `false` | Required write values and their meanings are not proved. |
@@ -53,6 +54,10 @@ poll loop.
 - The exact source identity and reset-root addresses listed above.
 - A fresh scratch-project analysis completed with zero unresolved seeds and
   zero unresolved functions inside its direct-call depth bound.
+- All nine indirect sites are closed by the committed control-flow receipt.
+  The four switch tables have explicit guards and bounded target sets; every
+  reachable callback argument is either null or the Thumb pointer
+  `0x0001a299` targeting `0x0001a298`.
 - The sanitized receipt contains no firmware bytes, instruction text, private
   filesystem paths, or decompiler output.
 
@@ -76,8 +81,7 @@ poll loop.
 ### Refuted
 
 - The current K28 RAM-framebuffer skeleton is not an installable standalone OS.
-- A successful bounded static analysis does not, by itself, close indirect
-  control flow or prove hardware transaction semantics.
+- Closing indirect control flow does not prove hardware transaction semantics.
 - Removing the GarminOS application now would require guessing boot-critical
   behavior and is therefore outside the project's safety rules.
 
@@ -86,11 +90,13 @@ poll loop.
 The private evidence remains local. Its SHA-256 receipts are:
 
 - Ghidra inventory: `afd7c6ecb339e52d4af37af9d6c46825d4cd4d8a6c0718a7662022940c27b0e9`
+- Control-flow receipt file: `26b254184619ca42341857575b7d0ce5f3bca4a7e047d0417c3d75c7a97e21e8`
+- Control-flow canonical content: `6f68ae0c2deb2799353e53202a5bb70d194d52808535705edfa0c66dd9b537d3`
 - Private analysis text: `fb7623b5cd91cd21fb9a617a164d5b3a8a0cfc8e33b78efe6a265dc86a44f0e3`
 - Headless analysis log: `0d5f73c6f6c6da99a520c2064b07a28eccda65ae5b632698f2ae0c832a5f1cb3`
 - Script log: `a6eb00b5559b8a50e2e53e1fd957891e3ae55775ce8516327f3d4b36bed39d22`
-- Sanitized committed receipt: `d95e44612437d90e95ca73a9573219a174b1fdafe255c48139ee196e1a813a0b`
+- Sanitized committed receipt: `cd344a9c3e9fdc66d25be76ed1db9db270c8db8ae6770cec3847bc52556d294c`
 
-The next safe step is a separate offline evidence plan that attacks the six
-false gates individually. No result in this report changes the watch-safety or
-manual-flash boundary.
+The next safe step is separate offline evidence work on the five remaining
+false hardware-semantics gates. No result in this report changes the
+watch-safety or manual-flash boundary.

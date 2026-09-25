@@ -314,9 +314,33 @@ def load_ghidra_run(run: Path, root: ResetRoot) -> dict:
     return report
 
 
-def build_contract(root: ResetRoot, inventory: dict) -> dict:
+def build_contract(
+    root: ResetRoot,
+    inventory: dict,
+    *,
+    control_flow_proof: dict | None = None,
+    inventory_bytes: bytes | None = None,
+    image: bytes | None = None,
+) -> dict:
     validate_ghidra_inventory(inventory, root)
     functions = inventory["functions"]
+    has_indirect_control_flow = any(
+        function["indirect_control_flow"] for function in functions
+    )
+    control_flow_proof_sha256 = None
+    if control_flow_proof is not None:
+        if inventory_bytes is None or image is None:
+            raise ValueError(
+                "control-flow proof requires source image and inventory bytes"
+            )
+        import k28_control_flow
+
+        k28_control_flow.validate_control_flow_proof(
+            image, inventory, inventory_bytes, control_flow_proof
+        )
+        control_flow_proof_sha256 = k28_control_flow.proof_sha256(
+            control_flow_proof
+        )
     gates = {
         "pinned_source": inventory["program"]["sha256"] == root.image_sha256,
         "reset_root_exact": inventory["roots"]
@@ -328,9 +352,8 @@ def build_contract(root: ResetRoot, inventory: dict) -> dict:
         and not inventory["cancelled"]
         and inventory["unresolved_seed_count"] == 0
         and inventory["unresolved_function_count"] == 0,
-        "control_flow_closed": not any(
-            function["indirect_control_flow"] for function in functions
-        ),
+        "control_flow_closed": not has_indirect_control_flow
+        or control_flow_proof_sha256 is not None,
         "mmio_addresses_closed": not inventory["computed_mmio"],
         "mmio_widths_closed": not inventory["unknown_mmio_widths"]
         and not any(function["mmio_references"] for function in functions),
@@ -340,7 +363,7 @@ def build_contract(root: ResetRoot, inventory: dict) -> dict:
         and not any(function["backward_branches"] for function in functions),
         "memory_ranges_closed": not inventory["unknown_memory_ranges"],
     }
-    return {
+    report = {
         "schema_version": 1,
         "source_sha256": root.image_sha256,
         "reset_handler": f"0x{root.reset_handler:08x}",
@@ -358,6 +381,9 @@ def build_contract(root: ResetRoot, inventory: dict) -> dict:
         "gates": gates,
         "go": all(gates.values()),
     }
+    if control_flow_proof_sha256 is not None:
+        report["control_flow_proof_sha256"] = control_flow_proof_sha256
+    return report
 
 
 def sanitize_contract(contract: dict) -> dict:
@@ -374,6 +400,7 @@ def sanitize_contract(contract: dict) -> dict:
     ):
         raise ValueError("contract go value contradicts its gates")
     public_functions = []
+    has_indirect_control_flow = False
     for function in contract["functions"]:
         if not isinstance(function, dict):
             raise ValueError("contract function must be an object")
@@ -394,6 +421,9 @@ def sanitize_contract(contract: dict) -> dict:
         ):
             if not isinstance(function.get(name), list):
                 raise ValueError(f"contract function field {name!r} must be a list")
+        has_indirect_control_flow = has_indirect_control_flow or bool(
+            function["indirect_control_flow"]
+        )
         public_functions.append(
             {
                 "entry": function["entry"],
@@ -408,7 +438,16 @@ def sanitize_contract(contract: dict) -> dict:
                 "backward_branch_count": len(function["backward_branches"]),
             }
         )
-    return {
+    proof_digest = contract.get("control_flow_proof_sha256")
+    if gates.get("control_flow_closed") and has_indirect_control_flow:
+        if proof_digest is None:
+            raise ValueError(
+                "closed indirect sites require a control-flow proof digest"
+            )
+    if proof_digest is not None and not gates.get("control_flow_closed"):
+        raise ValueError("control-flow proof digest contradicts an open gate")
+
+    receipt = {
         "schema": "flyos.fr245.k28-reset-contract.v1",
         "source_sha256": contract["source_sha256"],
         "reset_handler": contract["reset_handler"],
@@ -425,6 +464,12 @@ def sanitize_contract(contract: dict) -> dict:
         "gates": dict(contract["gates"]),
         "go": bool(contract["go"]),
     }
+    if proof_digest is not None:
+        receipt["control_flow_proof_sha256"] = _require_sha256(
+            proof_digest,
+            "control-flow proof SHA-256",
+        )
+    return receipt
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -440,6 +485,7 @@ def _parser() -> argparse.ArgumentParser:
         "contract", help="write a sanitized reset-contract receipt"
     )
     contract.add_argument("--run", required=True, type=Path)
+    contract.add_argument("--control-flow-proof", type=Path)
     contract.add_argument("--output", required=True, type=Path)
     return parser
 
@@ -468,7 +514,30 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if arguments.command == "contract":
             root = load_reset_root(repository)
-            report = build_contract(root, load_ghidra_run(arguments.run, root))
+            inventory = load_ghidra_run(arguments.run, root)
+            proof = None
+            inventory_bytes = None
+            image = None
+            if arguments.control_flow_proof is not None:
+                try:
+                    proof = json.loads(
+                        arguments.control_flow_proof.read_text(encoding="utf-8")
+                    )
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"invalid control-flow proof: {error}"
+                    ) from error
+                inventory_bytes = (
+                    arguments.run / "ghidra-inventory.json"
+                ).read_bytes()
+                image = pinned_image_path(repository).read_bytes()
+            report = build_contract(
+                root,
+                inventory,
+                control_flow_proof=proof,
+                inventory_bytes=inventory_bytes,
+                image=image,
+            )
             receipt = sanitize_contract(report)
             write_new_json(arguments.output, receipt)
             false_gates = [
