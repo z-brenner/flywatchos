@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,8 @@ REQUIRED_GHIDRA_OUTPUTS = (
     "script.log",
 )
 GHIDRA_INVENTORY_SCHEMA = "flyos.fr245.k28-reset-inventory.v1"
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+ADDRESS_PATTERN = re.compile(r"0x[0-9a-f]{8}")
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,18 @@ def _require_list(report: dict, name: str) -> list:
     return value
 
 
+def _require_sha256(value: object, label: str) -> str:
+    if not isinstance(value, str) or SHA256_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"{label} must be a canonical lowercase SHA-256")
+    return value
+
+
+def _require_address(value: object, label: str) -> str:
+    if not isinstance(value, str) or ADDRESS_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"{label} must be a canonical 32-bit address")
+    return value
+
+
 def validate_ghidra_inventory(report: dict, root: ResetRoot) -> None:
     if not isinstance(report, dict):
         raise ValueError("Ghidra inventory must be an object")
@@ -174,6 +189,7 @@ def validate_ghidra_inventory(report: dict, root: ResetRoot) -> None:
             raise ValueError(f"inventory field {name!r} must be a non-negative integer")
     functions = _require_list(report, "functions")
     entries = []
+    functions_by_entry = {}
     required_function_fields = {
         "entry",
         "end_inclusive",
@@ -188,13 +204,20 @@ def validate_ghidra_inventory(report: dict, root: ResetRoot) -> None:
     for function in functions:
         if not isinstance(function, dict) or not required_function_fields <= function.keys():
             raise ValueError("inventory function schema mismatch")
-        entry = function["entry"]
-        if not isinstance(entry, str) or not entry.startswith("0x"):
-            raise ValueError("inventory function entry mismatch")
+        entry = _require_address(function["entry"], "inventory function entry")
+        end = _require_address(
+            function["end_inclusive"], "inventory function end"
+        )
+        if int(end, 16) < int(entry, 16):
+            raise ValueError("inventory function end precedes its entry")
         entries.append(int(entry, 16))
-        if not isinstance(function["sha256"], str) or len(function["sha256"]) != 64:
-            raise ValueError("inventory function SHA-256 mismatch")
-        if not isinstance(function["depth"], int) or function["depth"] < 0:
+        functions_by_entry[entry] = function
+        _require_sha256(function["sha256"], "inventory function SHA-256")
+        if (
+            not isinstance(function["depth"], int)
+            or isinstance(function["depth"], bool)
+            or not 0 <= function["depth"] <= report["max_depth"]
+        ):
             raise ValueError("inventory function depth mismatch")
         for name in (
             "direct_calls",
@@ -205,6 +228,8 @@ def validate_ghidra_inventory(report: dict, root: ResetRoot) -> None:
         ):
             if not isinstance(function[name], list):
                 raise ValueError(f"inventory function field {name!r} must be a list")
+        for callee in function["direct_calls"]:
+            _require_address(callee, "inventory direct-call target")
     if entries != sorted(entries) or len(entries) != len(set(entries)):
         raise ValueError("inventory functions must be unique and address-sorted")
     for name in (
@@ -215,6 +240,55 @@ def validate_ghidra_inventory(report: dict, root: ResetRoot) -> None:
         "unknown_memory_ranges",
     ):
         _require_list(report, name)
+
+    for root_entry in expected_roots:
+        root_function = functions_by_entry.get(root_entry)
+        if root_function is None or root_function["depth"] != 0:
+            raise ValueError(f"missing depth-zero root function: {root_entry}")
+
+    if report["analysis_complete"]:
+        if report["cancelled"]:
+            raise ValueError("complete inventory cannot be cancelled")
+        if report["unresolved_seed_count"] or report["unresolved_function_count"]:
+            raise ValueError("complete inventory cannot report unresolved functions")
+        for function in functions:
+            if function["depth"] >= report["max_depth"]:
+                continue
+            for callee in function["direct_calls"]:
+                value = int(callee, 16)
+                if APP_BASE <= value < APP_END_EXCLUSIVE:
+                    covered = functions_by_entry.get(callee)
+                    if covered is None or covered["depth"] > function["depth"] + 1:
+                        raise ValueError(
+                            f"missing direct-call coverage for {callee}"
+                        )
+
+    mmio_references = [
+        reference
+        for function in functions
+        for reference in function["mmio_references"]
+    ]
+    if any(
+        reference not in report["unknown_mmio_widths"]
+        for reference in mmio_references
+    ):
+        raise ValueError("MMIO-width summary contradicts function evidence")
+    if any(
+        reference not in report["unknown_mmio_values"]
+        for reference in mmio_references
+    ):
+        raise ValueError("MMIO-value summary contradicts function evidence")
+    expected_polls = [
+        {
+            "function": function["entry"],
+            "from": branch["from"],
+            "to": branch["to"],
+        }
+        for function in functions
+        for branch in function["backward_branches"]
+    ]
+    if any(poll not in report["unbounded_polls"] for poll in expected_polls):
+        raise ValueError("poll summary contradicts function evidence")
 
 
 def load_ghidra_run(run: Path, root: ResetRoot) -> dict:
@@ -258,9 +332,12 @@ def build_contract(root: ResetRoot, inventory: dict) -> dict:
             function["indirect_control_flow"] for function in functions
         ),
         "mmio_addresses_closed": not inventory["computed_mmio"],
-        "mmio_widths_closed": not inventory["unknown_mmio_widths"],
-        "mmio_values_closed": not inventory["unknown_mmio_values"],
-        "polls_bounded": not inventory["unbounded_polls"],
+        "mmio_widths_closed": not inventory["unknown_mmio_widths"]
+        and not any(function["mmio_references"] for function in functions),
+        "mmio_values_closed": not inventory["unknown_mmio_values"]
+        and not any(function["mmio_references"] for function in functions),
+        "polls_bounded": not inventory["unbounded_polls"]
+        and not any(function["backward_branches"] for function in functions),
         "memory_ranges_closed": not inventory["unknown_memory_ranges"],
     }
     return {
@@ -284,8 +361,39 @@ def build_contract(root: ResetRoot, inventory: dict) -> dict:
 
 
 def sanitize_contract(contract: dict) -> dict:
+    _require_sha256(contract.get("source_sha256"), "contract source SHA-256")
+    if not isinstance(contract.get("functions"), list):
+        raise ValueError("contract functions must be a list")
+    gates = contract.get("gates")
+    if not isinstance(gates, dict) or not gates or not all(
+        isinstance(value, bool) for value in gates.values()
+    ):
+        raise ValueError("contract gates must be a non-empty boolean object")
+    if not isinstance(contract.get("go"), bool) or contract["go"] != all(
+        gates.values()
+    ):
+        raise ValueError("contract go value contradicts its gates")
     public_functions = []
     for function in contract["functions"]:
+        if not isinstance(function, dict):
+            raise ValueError("contract function must be an object")
+        _require_address(function.get("entry"), "contract function entry")
+        _require_sha256(function.get("sha256"), "contract function SHA-256")
+        if (
+            not isinstance(function.get("depth"), int)
+            or isinstance(function.get("depth"), bool)
+            or not 0 <= function["depth"] <= 3
+        ):
+            raise ValueError("contract function depth mismatch")
+        for name in (
+            "direct_calls",
+            "indirect_control_flow",
+            "literal_references",
+            "mmio_references",
+            "backward_branches",
+        ):
+            if not isinstance(function.get(name), list):
+                raise ValueError(f"contract function field {name!r} must be a list")
         public_functions.append(
             {
                 "entry": function["entry"],

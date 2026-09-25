@@ -30,6 +30,19 @@ def fixture_root():
 
 
 def fixture_inventory():
+    def function(entry, depth):
+        return {
+            "entry": entry,
+            "end_inclusive": entry,
+            "sha256": "11" * 32,
+            "depth": depth,
+            "direct_calls": [],
+            "indirect_control_flow": [],
+            "literal_references": [],
+            "mmio_references": [],
+            "backward_branches": [],
+        }
+
     return {
         "schema": "flyos.fr245.k28-reset-inventory.v1",
         "program": {
@@ -45,17 +58,8 @@ def fixture_inventory():
         "unresolved_seed_count": 0,
         "unresolved_function_count": 0,
         "functions": [
-            {
-                "entry": "0x00019340",
-                "end_inclusive": "0x0001934f",
-                "sha256": "11" * 32,
-                "depth": 0,
-                "direct_calls": [],
-                "indirect_control_flow": [],
-                "literal_references": [],
-                "mmio_references": [],
-                "backward_branches": [],
-            }
+            function("0x000031f0", 0),
+            function("0x00019340", 0),
         ],
         "computed_mmio": [],
         "unknown_mmio_widths": [],
@@ -218,6 +222,45 @@ class ContractGateTests(unittest.TestCase):
         self.assertFalse(report["gates"]["control_flow_closed"])
         self.assertFalse(report["go"])
 
+    def test_complete_gate_requires_root_records_and_in_bound_callee_coverage(self):
+        empty = fixture_inventory()
+        empty["functions"] = []
+        with self.assertRaisesRegex(ValueError, "root function"):
+            contract.build_contract(fixture_root(), empty)
+
+        missing_root = fixture_inventory()
+        missing_root["functions"] = missing_root["functions"][1:]
+        with self.assertRaisesRegex(ValueError, "root function"):
+            contract.build_contract(fixture_root(), missing_root)
+
+        missing_callee = fixture_inventory()
+        missing_callee["functions"][1]["direct_calls"] = ["0x00019400"]
+        with self.assertRaisesRegex(ValueError, "direct-call coverage"):
+            contract.build_contract(fixture_root(), missing_callee)
+
+    def test_function_evidence_cannot_contradict_unresolved_summaries(self):
+        mmio = fixture_inventory()
+        mmio["functions"][1]["mmio_references"] = [
+            {
+                "from": "0x00019344",
+                "address": "0x40048000",
+                "type": "DATA",
+            }
+        ]
+        with self.assertRaisesRegex(ValueError, "MMIO-width summary"):
+            contract.build_contract(fixture_root(), mmio)
+
+        branch = fixture_inventory()
+        branch["functions"][1]["backward_branches"] = [
+            {
+                "from": "0x0001934c",
+                "to": "0x00019344",
+                "type": "CONDITIONAL_JUMP",
+            }
+        ]
+        with self.assertRaisesRegex(ValueError, "poll summary"):
+            contract.build_contract(fixture_root(), branch)
+
     def test_computed_mmio_and_unbounded_polling_fail_independently(self):
         for field, value, gate in (
             ("computed_mmio", ["0x40000000+r3"], "mmio_addresses_closed"),
@@ -268,6 +311,13 @@ class ContractGateTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, encoded)
         self.assertEqual("11" * 32, receipt["functions"][0]["sha256"])
+
+    def test_public_sanitizer_rejects_private_text_in_hash_field(self):
+        complete = contract.build_contract(fixture_root(), fixture_inventory())
+        private_text = r"C:\Users\zgbre\private\decompilation"
+        complete["functions"][0]["sha256"] = private_text.ljust(64, "x")
+        with self.assertRaisesRegex(ValueError, "function SHA-256"):
+            contract.sanitize_contract(complete)
 
 
 class ContractDocumentationTests(unittest.TestCase):
