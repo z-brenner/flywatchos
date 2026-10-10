@@ -42,6 +42,8 @@ individual CTest tests also have a three-minute limit.
 - A real import-free C/WebAssembly build and native/Wasm differential checks
 - A self-contained live bundle and all jsdom state/circuit/anatomy suites
 - Real-Wasm paired-protocol replay and full-bundle experiment lifecycle checks
+- Separate source-equation C/Wasm reference, original-MAT/SI oracle regeneration,
+  signed-state numerical parity and timestep-refinement checks
 - Complete public firmware-tool unittest discovery with synthetic inputs
 - Runner regressions for stop-on-failure, timeout and public-only guards
 

@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "id": "pisokas-rate-core-noise-off",
+  "name": "Deterministic source-equation rate reference",
+  "scope": "host-only-source-equation-reference",
+  "hardware_verified": false,
+  "node_count": 60,
+  "edge_count": 326,
+  "equation": "u_next = u + (0.0001 / 0.02) * (-u + 0.03 * sum(W[target,source] * tanh(u[source])) + 0.03 * input[target])",
+  "integration": "Synchronous explicit Euler; all incoming currents use the previous state.",
+  "dt_seconds": 0.0001,
+  "dt_ms": 0.1,
+  "tau_seconds": 0.02,
+  "recurrent_gain": 0.03,
+  "input_gain": 0.03,
+  "initial_u": 0,
+  "units": "Signed dimensionless u = 100 * (V - V0), with V in volts; not a firing rate. No clipping or rectification.",
+  "transfer": "Signed tanh(u), a normalized current transfer; not a spike rate.",
+  "time": "Elapsed actual Euler updates multiplied by 0.1 ms; starts at zero.",
+  "inputs": {
+    "kind": "controlled-direct-rate-equivalent-current",
+    "range": [
+      0,
+      200
+    ],
+    "units": "normalized rate-equivalent current input, not Hz",
+    "cue": "Chosen synthetic triangular profile, 90-degree half-width, centered on E-PG model-relative bins.",
+    "cue_angle_degrees": [
+      0,
+      45,
+      90,
+      135,
+      180,
+      225,
+      270,
+      315,
+      0,
+      0,
+      45,
+      90,
+      135,
+      180,
+      225,
+      270,
+      315,
+      0
+    ],
+    "turn": "Signed control selects P-EN A indices 0..7 or B indices 8..15; nonnegative injection magnitude 0..200, not calibrated angular velocity."
+  },
+  "source_parameters": {
+    "Cmem_farads": 2e-08,
+    "Rmem_ohms": 1000000.0,
+    "V0_volts": 0,
+    "inCurrent_amperes": 3e-10,
+    "source_noise_amperes": 3e-10
+  },
+  "limitations": [
+    "Source Gaussian current noise is explicitly disabled.",
+    "Source centered 100 ms moving spike sum and global-maximum normalization are not reproduced.",
+    "Direct synthetic inputs are not the published stochastic stimulus pipeline.",
+    "Two disconnected padding units are omitted; exactly equivalent for 60 active units with source noise disabled.",
+    "No full-paper reproduction, biological validation, calibrated heading or watch-target validation."
+  ],
+  "limits": {
+    "max_updates_per_call": 1000,
+    "max_epoch": 10000000,
+    "fixed_memory_bytes": 131072
+  },
+  "paper": "https://doi.org/10.7554/eLife.53985",
+  "repository": "https://github.com/johnpi/eLife_Pisokas_Heinze_Webb_2019",
+  "source_commit": "dfb95dfeaad0da2df0f7f687846d4df44079a483",
+  "source_path": "Kakaria_deBivort_2017/KakariaPBSimulationCode.v2/flyLI2.m",
+  "source_url": "https://github.com/johnpi/eLife_Pisokas_Heinze_Webb_2019/blob/dfb95dfeaad0da2df0f7f687846d4df44079a483/Kakaria_deBivort_2017/KakariaPBSimulationCode.v2/flyLI2.m",
+  "source_sha256": "92adf312cab38bd012fa7d68a8aca1d38ff9639c8f095a6f9df755a7b488d0b0",
+  "source_files": {
+    "pisokas2020_cx60_edges.csv": {
+      "bytes": 9319,
+      "sha256": "b9066dd86199a76038eab7f288adf910a32525e2060460af06df1351d87245d0"
+    },
+    "pisokas2020_cx60_nodes.json": {
+      "bytes": 9839,
+      "sha256": "8e498d66dfd4d6432c20cd6194557ba0a7d8fe8f8c8d7dc477124b00c36df297"
+    },
+    "connectivity_matrix_drosophila_mine_case_5_9cols_labels1.mat": {
+      "bytes": 901,
+      "sha256": "abfdcb2918e3637e41d4ba7b7438e512f545dac6553ce89d5cfddb49de044b12"
+    },
+    "collect_stats_long_run.m": {
+      "bytes": 105329,
+      "sha256": "c24f14c2d6e98f29ba604f289337b3057815e68562edd7504f6d57643fd8e1a1"
+    },
+    "PBexperimentModified.m": {
+      "bytes": 20252,
+      "sha256": "13e71dcaf45550adfd9861ea9711c5afcec0834050700ae8c31fc185b8d62bfc"
+    },
+    "flyLI2.m": {
+      "bytes": 3656,
+      "sha256": "92adf312cab38bd012fa7d68a8aca1d38ff9639c8f095a6f9df755a7b488d0b0"
+    },
+    "flyLIF2.m": {
+      "bytes": 4197,
+      "sha256": "76a0828fad72bc5611096e836e10e2cecf3624629858589ee4b9f897ebe54431"
+    },
+    "LICENSE": {
+      "bytes": 1116,
+      "sha256": "5d57b788313bac36d1b33f2c1e24c1ae42707cc45bbc983ade7930b179f6abb1"
+    }
+  },
+  "weights": {
+    "1.0": 6.07203896674184,
+    "1.1": 47.9173822984772,
+    "-1.0": -35.6772759590409,
+    "-1.1": -19.3358579258735,
+    "3.0": 99.9680554605268
+  },
+  "orientation": "upstream matrix[target,source]; source driver transposes before calling simulator",
+  "license": "MIT",
+  "license_notice": "MIT License\n\nCopyright (c) 2020 Kyobi S. Kakaria, Benjamin L. de Bivort and Ioannis Pisokas\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+}

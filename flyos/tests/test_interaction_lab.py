@@ -21,6 +21,58 @@ builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 
 class InteractionLabTests(unittest.TestCase):
+    def test_reference_bundle_requires_baseline_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaisesRegex(ValueError, 'reference.*baseline|reference.*--wasm'):
+                builder.build(EXPORTER, root / 'lab', reference_wasm=root / 'reference.wasm')
+            self.assertFalse((root / 'lab').exists())
+
+    def test_reference_metadata_rejects_false_scope_or_units(self):
+        self.assertTrue(hasattr(builder, 'load_reference_metadata'))
+        meta = {'schema': 1, 'scope': 'host-only-source-equation-reference',
+                'hardware_verified': False, 'id': 'pisokas-rate-core-noise-off',
+                'node_count': 60, 'edge_count': 326, 'dt_ms': 0.1,
+                'license_notice': 'MIT License', 'limitations': ['Noise disabled.']}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'reference.json'
+            def load(value):
+                raw = json.dumps(value).encode('utf-8')
+                return builder.load_reference_metadata(path, raw)
+            self.assertEqual(load(meta), meta)
+            for key, value in [('schema', True), ('hardware_verified', True),
+                               ('node_count', 64), ('dt_ms', 1),
+                               ('scope', 'validated-fly'), ('license_notice', '')]:
+                with self.subTest(key=key), self.assertRaises(ValueError):
+                    load({**meta, key: value})
+
+    def test_reference_bundle_binds_separate_engine_and_metadata(self):
+        # Packaging only; actual module validation is tested independently.
+        model_path = BUILDER.parents[1] / 'sim/rate_reference_model.json'
+        model_bytes = model_path.read_bytes()
+        baseline = {'source_sha256': {'sim/circuit_models.json': hashlib.sha256(
+            (BUILDER.parents[1] / 'sim/circuit_models.json').read_bytes()).hexdigest()}}
+        reference = {'source_sha256': {'sim/rate_reference_model.json': hashlib.sha256(model_bytes).hexdigest()}}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with mock.patch.object(builder.wasm_builder, 'verified_artifact', return_value=(b'baseline', baseline, 'a' * 64)), \
+                    mock.patch.object(builder, 'load_reference_artifact', return_value=(b'reference', reference, 'b' * 64)):
+                builder.build(EXPORTER, root / 'lab', root / 'base.wasm', reference_wasm=root / 'ref.wasm')
+            html = (root / 'lab/index.html').read_text()
+            data = json.loads(html.split('<script id="lab-data" type="application/json">', 1)[1].split('</script>', 1)[0])
+            self.assertEqual(base64.b64decode(data['rate_reference_wasm']), b'reference')
+            self.assertEqual(data['rate_reference_wasm_sha256'], hashlib.sha256(b'reference').hexdigest())
+            self.assertEqual(data['rate_reference_wasm_manifest'], reference)
+            self.assertEqual(data['rate_reference_wasm_manifest_sha256'], 'b' * 64)
+            self.assertEqual(data['rate_reference_model'], json.loads(model_bytes))
+            self.assertEqual(base64.b64decode(data['live_wasm']), b'baseline')
+            reference['source_sha256']['sim/rate_reference_model.json'] = '0' * 64
+            with mock.patch.object(builder.wasm_builder, 'verified_artifact', return_value=(b'baseline', baseline, 'a' * 64)), \
+                    mock.patch.object(builder, 'load_reference_artifact', return_value=(b'reference', reference, 'b' * 64)):
+                with self.assertRaisesRegex(ValueError, 'Reference.*identity'):
+                    builder.build(EXPORTER, root / 'bad', root / 'base.wasm', reference_wasm=root / 'ref.wasm')
+            self.assertFalse((root / 'bad').exists())
+
     def test_builder_embeds_identified_experiment_protocol(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / 'lab'
@@ -33,9 +85,14 @@ class InteractionLabTests(unittest.TestCase):
                                   'the paired experiment implementation must be identified')
             script = BUILDER.with_name('interaction_lab_experiment_protocol.js').read_bytes()
             self.assertEqual(data['experiment_protocol_sha256'], hashlib.sha256(script).hexdigest())
+            script = BUILDER.with_name('interaction_lab_rate_reference_protocol.js').read_bytes()
+            self.assertEqual(data['rate_reference_protocol_sha256'], hashlib.sha256(script).hexdigest())
             self.assertIn('id="experiments-mode"', html)
+            self.assertIn('id="reference-mode"', html)
             self.assertNotIn('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/', html)
             self.assertNotIn('/*__EXPERIMENTS_SCRIPT__*/', html)
+            self.assertNotIn('/*__RATE_REFERENCE_PROTOCOL_SCRIPT__*/', html)
+            self.assertNotIn('/*__REFERENCE_SCRIPT__*/', html)
 
     def test_anatomy_metadata_rejects_ambiguous_or_false_counts(self):
         nodes = [dict(body_id='1001', **{'class': 'EPG'}, instance='EPG_a'),

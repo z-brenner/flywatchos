@@ -266,6 +266,7 @@ function liveUpdateModelControls(metadata) {
 function enterLive(deliberate = true) {
   if (!labEngine || liveMode) return;
   if (deliberate) userLensSelected = true;
+  if (typeof leaveReference === 'function') leaveReference();
   leaveExperiments();
   leaveAnatomy();
   pause(); liveMode = true; pause();
@@ -365,7 +366,7 @@ window.addEventListener('blur',()=>{if(liveMode){pause();liveReleaseAll(false);}
 
 async function initializeLive() {
   if (!data.live_wasm) {
-    $('live-status').textContent='Replay bundle. Live engine was not included.'; experimentsRefreshAvailability(); return;
+    $('live-status').textContent='Replay bundle. Live engine was not included.'; experimentsRefreshAvailability(); if (typeof referenceRefreshAvailability === 'function') referenceRefreshAvailability(); return;
   }
   try {
     const bytes=Uint8Array.from(atob(data.live_wasm),c=>c.charCodeAt(0));
@@ -390,13 +391,13 @@ async function initializeLive() {
     labEngine.fly_lab_reset(0);
     liveReadTopology();
     labModule=loaded.module;
-    experimentsRefreshAvailability();
+    experimentsRefreshAvailability(); if (typeof referenceRefreshAvailability === 'function') referenceRefreshAvailability();
     $('live-mode').disabled=false;
     $('live-status').textContent='Ready. Real C → WebAssembly. No server.';
-    if (!userLensSelected && !anatomyMode && !experimentsMode) enterLive(false);
+    if (!userLensSelected && !anatomyMode && !experimentsMode && !referenceMode) enterLive(false);
   } catch(error) {
     labModule=null;
-    experimentsRefreshAvailability();
+    experimentsRefreshAvailability(); if (typeof referenceRefreshAvailability === 'function') referenceRefreshAvailability();
     $('live-status').textContent='Live engine unavailable. Replays still work.';
     $('live-status').title=error.message;
   }

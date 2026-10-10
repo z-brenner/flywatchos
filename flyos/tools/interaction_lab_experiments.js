@@ -108,6 +108,7 @@ function experimentsShowSources() {
 function enterExperiments() {
   if (!experimentsAvailable() || experimentsMode) return;
   if (typeof userLensSelected !== 'undefined') userLensSelected = true;
+  if (typeof leaveReference === 'function') leaveReference();
   leaveAnatomy(); pause();
   if (liveMode) liveReleaseAll(false);
   liveMode = false; experimentsMode = true;

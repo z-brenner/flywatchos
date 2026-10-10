@@ -147,3 +147,27 @@ add_test(NAME flyos-cx-provenance-tests
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cx_provenance.py)
 add_test(NAME flyos-hulse-provenance-tests
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hulse_provenance.py)
+
+# Independent source-equation reference; never linked to the original bridge
+# or any watch target. Existing model binaries and APIs remain unchanged.
+add_library(flyos_rate_reference sim/rate_reference.c)
+target_include_directories(flyos_rate_reference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(flyos_rate_reference PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
+if(NOT MSVC)
+    target_link_libraries(flyos_rate_reference PUBLIC m)
+endif()
+flyos_strict_warnings(flyos_rate_reference)
+add_executable(flyos-rate-reference-tests tests/test_rate_reference.c)
+target_link_libraries(flyos-rate-reference-tests PRIVATE flyos_rate_reference)
+flyos_strict_warnings(flyos-rate-reference-tests)
+add_test(NAME flyos-rate-reference-tests COMMAND flyos-rate-reference-tests)
+add_executable(flyos-rate-reference-trace tests/rate_reference_trace.c)
+target_link_libraries(flyos-rate-reference-trace PRIVATE flyos_rate_reference)
+flyos_strict_warnings(flyos-rate-reference-trace)
+add_test(NAME flyos-rate-reference-oracle-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rate_reference_oracle.py
+        $<TARGET_FILE:flyos-rate-reference-trace>)
+add_test(NAME flyos-rate-reference-provenance-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rate_reference_provenance.py)
+add_test(NAME flyos-rate-reference-build-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_build_rate_reference_wasm.py)

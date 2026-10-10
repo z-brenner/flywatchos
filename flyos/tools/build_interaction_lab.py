@@ -27,6 +27,36 @@ wasm_builder = importlib.util.module_from_spec(_wasm_spec)
 _wasm_spec.loader.exec_module(wasm_builder)
 
 
+def load_reference_artifact(wasm: Path, node: str) -> tuple[bytes, dict, str]:
+    """Keep the optional numerical engine independent of the original module."""
+    spec = importlib.util.spec_from_file_location('fly_rate_reference_builder',
+        Path(__file__).with_name('build_rate_reference_wasm.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.verified_artifact(wasm, node)
+
+
+def load_reference_metadata(path: Path, source_bytes: bytes | None = None) -> dict:
+    raw = path.read_bytes() if source_bytes is None else source_bytes
+    if len(raw) > 128 * 1024:
+        raise ValueError('reference metadata is oversized')
+    value = json.loads(raw.decode('utf-8'))
+    if (not isinstance(value, dict) or type(value.get('schema')) is not int
+            or value['schema'] != 1 or value.get('scope') != 'host-only-source-equation-reference'
+            or value.get('hardware_verified') is not False
+            or value.get('id') != 'pisokas-rate-core-noise-off'
+            or type(value.get('node_count')) is not int or value['node_count'] != 60
+            or type(value.get('edge_count')) is not int or value['edge_count'] != 326
+            or type(value.get('dt_ms')) not in (int, float) or value['dt_ms'] != 0.1
+            or not isinstance(value.get('license_notice'), str)
+            or 'MIT License' not in value['license_notice']
+            or not isinstance(value.get('limitations'), list) or not value['limitations']):
+        raise ValueError('invalid source-equation reference metadata')
+    # Prevent accepted non-finite extension fields from breaking browser JSON.parse.
+    json.dumps(value, allow_nan=False)
+    return value
+
+
 def load_anatomy_data(path: Path) -> dict:
     """Bound and reconcile the static anatomy presentation contract.
 
@@ -183,15 +213,26 @@ def frame_png(runs: list[list[int]]) -> bytes:
             + chunk(b'IDAT', zlib.compress(rows, 9)) + chunk(b'IEND', b''))
 
 
-def build(exporter: Path, output: Path, wasm: Path | None = None, node: str = 'node') -> None:
+def build(exporter: Path, output: Path, wasm: Path | None = None, node: str = 'node',
+          reference_wasm: Path | None = None) -> None:
     # Attribute only a verified snapshot of the complete module/manifest pair.
     # Reject missing/stale provenance before producing any output or trace.
+    if reference_wasm is not None and wasm is None:
+        raise ValueError('reference comparison requires baseline --wasm')
     live_artifact = wasm_builder.verified_artifact(wasm, node) if wasm is not None else None
+    reference_artifact = load_reference_artifact(reference_wasm, node) if reference_wasm is not None else None
     model_path = Path(__file__).parents[1] / 'sim' / 'circuit_models.json'
     model_bytes = model_path.read_bytes()
     models = load_model_metadata(model_path, model_bytes)
     if live_artifact is not None and hashlib.sha256(model_bytes).hexdigest() != live_artifact[1]['source_sha256']['sim/circuit_models.json']:
         raise ValueError('Model metadata source identity changed after WebAssembly validation; rebuild and retry.')
+    reference_model = None
+    if reference_artifact is not None:
+        reference_path = Path(__file__).parents[1] / 'sim/rate_reference_model.json'
+        reference_bytes = reference_path.read_bytes()
+        reference_model = load_reference_metadata(reference_path, reference_bytes)
+        if hashlib.sha256(reference_bytes).hexdigest() != reference_artifact[1]['source_sha256']['sim/rate_reference_model.json']:
+            raise ValueError('Reference model metadata source identity changed; rebuild and retry.')
     # Reserve before invoking the exporter; never overwrite an existing capture.
     output.mkdir(parents=True, exist_ok=False)
     raw = subprocess.run([str(exporter.resolve())], check=True, capture_output=True).stdout
@@ -208,12 +249,22 @@ def build(exporter: Path, output: Path, wasm: Path | None = None, node: str = 'n
         data['live_wasm_sha256'] = hashlib.sha256(module).hexdigest()
         data['live_wasm_manifest'] = manifest
         data['live_wasm_manifest_sha256'] = manifest_sha256
+    if reference_artifact is not None:
+        module, manifest, manifest_sha256 = reference_artifact
+        data['rate_reference_wasm'] = base64.b64encode(module).decode('ascii')
+        data['rate_reference_wasm_sha256'] = hashlib.sha256(module).hexdigest()
+        data['rate_reference_wasm_manifest'] = manifest
+        data['rate_reference_wasm_manifest_sha256'] = manifest_sha256
+        data['rate_reference_model'] = reference_model
     for scenario in data['scenarios']:
         for frame in scenario['frames']:
             frame['image'] = 'data:image/png;base64,' + base64.b64encode(frame_png(frame.pop('pixels'))).decode('ascii')
     experiment_protocol_bytes = Path(__file__).with_name('interaction_lab_experiment_protocol.js').read_bytes()
     experiment_protocol = experiment_protocol_bytes.decode('utf-8')
     data['experiment_protocol_sha256'] = hashlib.sha256(experiment_protocol_bytes).hexdigest()
+    reference_protocol_bytes = Path(__file__).with_name('interaction_lab_rate_reference_protocol.js').read_bytes()
+    reference_protocol = reference_protocol_bytes.decode('utf-8')
+    data['rate_reference_protocol_sha256'] = hashlib.sha256(reference_protocol_bytes).hexdigest()
     payload = json.dumps(data, separators=(',', ':')).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     template = Path(__file__).with_name('interaction_lab.html').read_text(encoding='utf-8')
     if template.count('/*__LAB_DATA__*/') != 1:
@@ -232,11 +283,18 @@ def build(exporter: Path, output: Path, wasm: Path | None = None, node: str = 'n
     experiments_script = Path(__file__).with_name('interaction_lab_experiments.js').read_text(encoding='utf-8')
     if template.count('/*__EXPERIMENTS_SCRIPT__*/') != 1 or '</script' in experiments_script.lower():
         raise ValueError('invalid experiments script template')
+    if template.count('/*__RATE_REFERENCE_PROTOCOL_SCRIPT__*/') != 1 or '</script' in reference_protocol.lower():
+        raise ValueError('invalid rate reference protocol script template')
+    reference_script = Path(__file__).with_name('interaction_lab_reference.js').read_text(encoding='utf-8')
+    if template.count('/*__REFERENCE_SCRIPT__*/') != 1 or '</script' in reference_script.lower():
+        raise ValueError('invalid reference script template')
     (output / 'index.html').write_text(template.replace('/*__LAB_DATA__*/', payload)
                                       .replace('/*__CIRCUIT_SCRIPT__*/', circuit_script)
                                       .replace('/*__ANATOMY_SCRIPT__*/', anatomy_script)
                                       .replace('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/', experiment_protocol)
                                       .replace('/*__EXPERIMENTS_SCRIPT__*/', experiments_script)
+                                      .replace('/*__RATE_REFERENCE_PROTOCOL_SCRIPT__*/', reference_protocol)
+                                      .replace('/*__REFERENCE_SCRIPT__*/', reference_script)
                                       .replace('/*__LIVE_SCRIPT__*/', live_script), encoding='utf-8')
     files = [output / 'index.html', output / 'trace.json']
     (output / 'SHA256SUMS').write_text(''.join(
@@ -248,10 +306,11 @@ def main() -> int:
     parser.add_argument('--exporter', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True, help='new directory; existing captures are never replaced')
     parser.add_argument('--wasm', type=Path, help='optional real-C bridge; requires matching adjacent .wasm.json manifest')
+    parser.add_argument('--reference-wasm', type=Path, help='optional separate rate reference; requires --wasm and its own adjacent manifest')
     parser.add_argument('--node', default='node', help='Node executable for bounded validation of the exact embedded Wasm')
     args = parser.parse_args()
     try:
-        build(args.exporter, args.output, args.wasm, args.node)
+        build(args.exporter, args.output, args.wasm, args.node, args.reference_wasm)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         parser.exit(2, f'lab build failed: {error}\n')
     print(f'Open {args.output / "index.html"} in a browser. Offline host model only.')
