@@ -10,7 +10,27 @@
  */
 #include <stdint.h>
 
+enum { FLY_LAB_MODEL_BRAIN64 = 0, FLY_LAB_MODEL_CX = 1 };
+/* Starts a new host session. Invalid model leaves the entire session intact.
+ * Legacy reset(seed) always selects the exact original Brain64 baseline. */
 void fly_lab_reset(uint32_t seed);
+int fly_lab_reset_model(int model, uint32_t seed);
+uint32_t fly_lab_model(void);
+/* Actual model units; neuron_count remains the stable 64-slot buffer width. */
+uint32_t fly_lab_model_node_count(void);
+/* Synthetic, dimensionless circuit input. These are not watch sensors or
+ * measured visual/rotation signals. angle 0..359 degrees; strength 0..1024;
+ * turn -1024..1024. Invalid calls leave all fields unchanged. Brain64 stores
+ * but ignores these inputs; the alternate circuit ignores watch inputs. */
+int fly_lab_set_stimulus(int cue_degrees, int cue_strength, int turn_drive);
+int fly_lab_stimulus_angle(void);
+int fly_lab_stimulus_strength(void);
+int fly_lab_stimulus_turn(void);
+/* Coarse strongest E-PG sector, not a calibrated behavioral estimate.
+ * Heading is -1 for the baseline or a quiescent circuit; strength is the
+ * winning sector mean in Q10 arbitrary model activity, not Hz. */
+int fly_lab_readout_heading(void);
+int fly_lab_readout_strength(void);
 /* key: LIGHT=0, START=1, BACK=2, DOWN=3, UP=4.
  * phase: press=0, repeat=1, release=2. Returns 0 rejected, 1 native, 2 FlyOS.
  * Most recent route persists until another event or reset (-1).
@@ -31,7 +51,8 @@ int fly_lab_set_sensors(int mask, int bpm, int delta, int motion,
 /* Each call advances the real C brain once; it is not a physical clock tick.
  * Only HOME and !USB permits rendering and consumes a pending release pulse.
  * Native/invalid/USB steps preserve framebuffer and pending release pulses.
- * Held FlyOS keys retain ownership and drive the brain across context changes.
+ * Held FlyOS keys retain ownership across context changes and drive Brain64.
+ * CX60 uses only its separate circuit stimulus, regardless of watch inputs.
  */
 void fly_lab_step(void);
 
@@ -43,6 +64,19 @@ const uint8_t *fly_lab_pixels(void);
 const int16_t *fly_lab_activations(void);
 uint32_t fly_lab_pixel_count(void);
 uint32_t fly_lab_neuron_count(void);
+/* Exact active C graph, never copied into JavaScript. Invalid index yields
+ * endpoints -1 and weight/denominator/sign 0. Magnitudes are raw/denominator;
+ * sign is +1 or -1. Baseline uses sign*floor(activation/denominator), with
+ * raw=1. Edge provenance and alternative-model arithmetic are documented in
+ * circuit_models.json. No edge weight claims a measured physiological gain. */
+uint32_t fly_lab_edge_count(void);
+int fly_lab_edge_source(int edge);
+int fly_lab_edge_target(int edge);
+double fly_lab_edge_raw_weight(int edge);
+/* Signed implemented coefficient in Q10, including adaptation rounding. */
+int fly_lab_edge_weight_q(int edge);
+int fly_lab_edge_denominator(int edge);
+int fly_lab_edge_sign(int edge);
 int fly_lab_route(void);
 uint32_t fly_lab_held(void);
 uint32_t fly_lab_active(void);

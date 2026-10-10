@@ -1,0 +1,992 @@
+{
+  "schema": 1,
+  "models": [
+    {
+      "id": 0,
+      "key": "brain64",
+      "label": "Brain64 \u00b7 synthetic baseline",
+      "description": "The original deterministic 64-unit hand-authored network, unchanged.",
+      "biological_basis": "Synthetic fly-inspired motif only; no measured neuron identities, connectome weights, or biological dynamics.",
+      "approximations": [
+        "Population names are software groups, not identified cells.",
+        "Watch inputs and state labels are illustrative fixture mappings.",
+        "Activity is signed Q10 model state, not firing rate or neurotransmitter identity."
+      ],
+      "scale": 1024,
+      "node_count": 64,
+      "units": [
+        {
+          "id": 0,
+          "label": "Unit 00",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 1,
+          "label": "Unit 01",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 2,
+          "label": "Unit 02",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 3,
+          "label": "Unit 03",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 4,
+          "label": "Unit 04",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 5,
+          "label": "Unit 05",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 6,
+          "label": "Unit 06",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 7,
+          "label": "Unit 07",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 8,
+          "label": "Unit 08",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 9,
+          "label": "Unit 09",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 10,
+          "label": "Unit 10",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 11,
+          "label": "Unit 11",
+          "group": "Synthetic input",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 12,
+          "label": "Unit 12",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 13,
+          "label": "Unit 13",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 14,
+          "label": "Unit 14",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 15,
+          "label": "Unit 15",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 16,
+          "label": "Unit 16",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 17,
+          "label": "Unit 17",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 18,
+          "label": "Unit 18",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 19,
+          "label": "Unit 19",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 20,
+          "label": "Unit 20",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 21,
+          "label": "Unit 21",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 22,
+          "label": "Unit 22",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 23,
+          "label": "Unit 23",
+          "group": "Synthetic ring",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 24,
+          "label": "Unit 24",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 25,
+          "label": "Unit 25",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 26,
+          "label": "Unit 26",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 27,
+          "label": "Unit 27",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 28,
+          "label": "Unit 28",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 29,
+          "label": "Unit 29",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 30,
+          "label": "Unit 30",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 31,
+          "label": "Unit 31",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 32,
+          "label": "Unit 32",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 33,
+          "label": "Unit 33",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 34,
+          "label": "Unit 34",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 35,
+          "label": "Unit 35",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 36,
+          "label": "Unit 36",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 37,
+          "label": "Unit 37",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 38,
+          "label": "Unit 38",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 39,
+          "label": "Unit 39",
+          "group": "Synthetic association",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 40,
+          "label": "Unit 40",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 41,
+          "label": "Unit 41",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 42,
+          "label": "Unit 42",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 43,
+          "label": "Unit 43",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 44,
+          "label": "Unit 44",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 45,
+          "label": "Unit 45",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 46,
+          "label": "Unit 46",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 47,
+          "label": "Unit 47",
+          "group": "Seed pattern",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 48,
+          "label": "Unit 48",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 49,
+          "label": "Unit 49",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 50,
+          "label": "Unit 50",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 51,
+          "label": "Unit 51",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 52,
+          "label": "Unit 52",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 53,
+          "label": "Unit 53",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 54,
+          "label": "Unit 54",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 55,
+          "label": "Unit 55",
+          "group": "Synthetic modulation",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 56,
+          "label": "Unit 56",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 57,
+          "label": "Unit 57",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 58,
+          "label": "Unit 58",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 59,
+          "label": "Unit 59",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 60,
+          "label": "Unit 60",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 61,
+          "label": "Unit 61",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 62,
+          "label": "Unit 62",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        },
+        {
+          "id": 63,
+          "label": "Unit 63",
+          "group": "Synthetic readout",
+          "role": "Hand-authored Brain64 unit. No biological neuron identity."
+        }
+      ],
+      "sources": [],
+      "edge_semantics": "sign*floor(activity/denominator); raw magnitude1; exact handwritten C graph.",
+      "readout": "Synthetic rest/movement/arousal/quiet labels are software heuristics."
+    },
+    {
+      "id": 1,
+      "key": "pisokas-cx60",
+      "label": "CX60 \u00b7 published topology",
+      "description": "60 representative central-complex model populations and all 326 published directed edges, explored with simplified deterministic rates.",
+      "biological_basis": "Pisokas, Heinze and Webb (eLife 2020) anatomy-constrained Drosophila heading-circuit MODEL topology and optimized connection strengths. Not an EM-derived connectome.",
+      "approximations": [
+        "Representative populations aggregate anatomical cells; no individual neuron IDs.",
+        "Published 62 \u00d7 62 matrix has 60 connected units and 2 all-zero padding entries. Interface has 64 slots; unused 4 remain zero.",
+        "Dynamics are our rectified fixed-point rate relaxation, not the paper's LIF or tanh-current dynamics.",
+        "Global strength gain 1/100 and Q10 rounding are chosen engineering approximations.",
+        "Triangular 90-degree half-width cue and unitless P-EN-A/B turn drive are synthetic.",
+        "No calibrated yaw sign, path integration, self-sustained attractor or biological behavior validation.",
+        "Activity decays after cue removal. Seed has no effect: zero initial state, deterministic and noiseless.",
+        "No full brain, fly organism, consciousness or watch-sensor calibration is represented."
+      ],
+      "scale": 1024,
+      "node_count": 60,
+      "units": [
+        {
+          "id": 0,
+          "label": "P-EN A 1",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 1,
+          "label": "P-EN A 2",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 2,
+          "label": "P-EN A 3",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 3,
+          "label": "P-EN A 4",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 4,
+          "label": "P-EN A 5",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 5,
+          "label": "P-EN A 6",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 6,
+          "label": "P-EN A 7",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 7,
+          "label": "P-EN A 8",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 8,
+          "label": "P-EN B 1",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 9,
+          "label": "P-EN B 2",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 10,
+          "label": "P-EN B 3",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 11,
+          "label": "P-EN B 4",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 12,
+          "label": "P-EN B 5",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 13,
+          "label": "P-EN B 6",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 14,
+          "label": "P-EN B 7",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 15,
+          "label": "P-EN B 8",
+          "group": "P-EN",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 16,
+          "label": "P-EG A 1",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 17,
+          "label": "P-EG A 2",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 18,
+          "label": "P-EG A 3",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 19,
+          "label": "P-EG A 4",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 20,
+          "label": "P-EG A 5",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 21,
+          "label": "P-EG A 6",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 22,
+          "label": "P-EG A 7",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 23,
+          "label": "P-EG A 8",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 24,
+          "label": "P-EG A 9",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "A"
+        },
+        {
+          "id": 25,
+          "label": "P-EG B 1",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 26,
+          "label": "P-EG B 2",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 27,
+          "label": "P-EG B 3",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 28,
+          "label": "P-EG B 4",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 29,
+          "label": "P-EG B 5",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 30,
+          "label": "P-EG B 6",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 31,
+          "label": "P-EG B 7",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 32,
+          "label": "P-EG B 8",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 33,
+          "label": "P-EG B 9",
+          "group": "P-EG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "half": "B"
+        },
+        {
+          "id": 34,
+          "label": "E-PG A 1",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 0,
+          "half": "A"
+        },
+        {
+          "id": 35,
+          "label": "E-PG A 2",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 45,
+          "half": "A"
+        },
+        {
+          "id": 36,
+          "label": "E-PG A 3",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 90,
+          "half": "A"
+        },
+        {
+          "id": 37,
+          "label": "E-PG A 4",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 135,
+          "half": "A"
+        },
+        {
+          "id": 38,
+          "label": "E-PG A 5",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 180,
+          "half": "A"
+        },
+        {
+          "id": 39,
+          "label": "E-PG A 6",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 225,
+          "half": "A"
+        },
+        {
+          "id": 40,
+          "label": "E-PG A 7",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 270,
+          "half": "A"
+        },
+        {
+          "id": 41,
+          "label": "E-PG A 8",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 315,
+          "half": "A"
+        },
+        {
+          "id": 42,
+          "label": "E-PG A 9",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 0,
+          "half": "A"
+        },
+        {
+          "id": 43,
+          "label": "E-PG B 1",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 0,
+          "half": "B"
+        },
+        {
+          "id": 44,
+          "label": "E-PG B 2",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 45,
+          "half": "B"
+        },
+        {
+          "id": 45,
+          "label": "E-PG B 3",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 90,
+          "half": "B"
+        },
+        {
+          "id": 46,
+          "label": "E-PG B 4",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 135,
+          "half": "B"
+        },
+        {
+          "id": 47,
+          "label": "E-PG B 5",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 180,
+          "half": "B"
+        },
+        {
+          "id": 48,
+          "label": "E-PG B 6",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 225,
+          "half": "B"
+        },
+        {
+          "id": 49,
+          "label": "E-PG B 7",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 270,
+          "half": "B"
+        },
+        {
+          "id": 50,
+          "label": "E-PG B 8",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 315,
+          "half": "B"
+        },
+        {
+          "id": 51,
+          "label": "E-PG B 9",
+          "group": "E-PG",
+          "role": "Representative population in the published model, not an EM-identified cell.",
+          "cue_angle_degrees": 0,
+          "half": "B"
+        },
+        {
+          "id": 52,
+          "label": "Delta7 1",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 53,
+          "label": "Delta7 2",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 54,
+          "label": "Delta7 3",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 55,
+          "label": "Delta7 4",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 56,
+          "label": "Delta7 5",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 57,
+          "label": "Delta7 6",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 58,
+          "label": "Delta7 7",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        },
+        {
+          "id": 59,
+          "label": "Delta7 8",
+          "group": "Delta7",
+          "role": "Representative population in the published model, not an EM-identified cell."
+        }
+      ],
+      "sources": [
+        {
+          "title": "Pisokas, Heinze & Webb (2020), eLife 53985",
+          "url": "https://doi.org/10.7554/eLife.53985"
+        },
+        {
+          "title": "Pinned published model and MIT license",
+          "url": "https://github.com/johnpi/eLife_Pisokas_Heinze_Webb_2019/tree/dfb95dfeaad0da2df0f7f687846d4df44079a483"
+        },
+        {
+          "title": "Published category-to-strength mapping",
+          "url": "https://github.com/johnpi/eLife_Pisokas_Heinze_Webb_2019/blob/dfb95dfeaad0da2df0f7f687846d4df44079a483/Exp_Recurrent_PB_EB/collect_stats_long_run.m#L395-L433"
+        }
+      ],
+      "source_commit": "dfb95dfeaad0da2df0f7f687846d4df44079a483",
+      "source_sha256": "abfdcb2918e3637e41d4ba7b7438e512f545dac6553ce89d5cfddb49de044b12",
+      "raw_strength_source": "Exact published category-to-strength mapping from collect_stats_long_run.m; strengths are fitted MODEL values, not synapse counts.",
+      "category_strengths": {
+        "1.0": 6.07203896674184,
+        "1.1": 47.9173822984772,
+        "-1.0": -35.6772759590409,
+        "-1.1": -19.3358579258735,
+        "3.0": 99.9680554605268
+      },
+      "edge_semantics": "raw_weight is absolute published model strength; sign is published model sign; denominator 100 is global adaptation gain divisor; weight_q is signed implemented Q10 coefficient.",
+      "gain": 0.01,
+      "rounding": "round(published_signed_strength*1024/100), nearest with half away from zero",
+      "dynamics": "r_next=floor((3*r+clamp(drive+trunc(sum(weight_q*r)/1024),0,16383))/4); synchronous updates; abstract time.",
+      "readout": "Strongest mean E-PG sector, 45-degree resolution; duplicate 0-degree units are averaged. Lowest-angle sector wins ties. -1 means no E-PG activity. Not a calibrated compass.",
+      "stimulus": {
+        "angle_degrees": [
+          0,
+          359
+        ],
+        "strength": [
+          0,
+          1024
+        ],
+        "turn_drive": [
+          -1024,
+          1024
+        ],
+        "positive_turn": "P-EN-A units 0..7",
+        "negative_turn": "P-EN-B units 8..15",
+        "default": [
+          0,
+          768,
+          0
+        ]
+      },
+      "provenance": {
+        "name": "Pisokas2020 Drosophila heading circuit: 60 connected representative model units",
+        "paper": "https://doi.org/10.7554/eLife.53985",
+        "repository": "https://github.com/johnpi/eLife_Pisokas_Heinze_Webb_2019",
+        "source_commit": "dfb95dfeaad0da2df0f7f687846d4df44079a483",
+        "source_file": "Exp_Recurrent_PB_EB/connectivity_matrix_drosophila_mine_case_5_9cols_labels1.mat",
+        "source_sha256": "abfdcb2918e3637e41d4ba7b7438e512f545dac6553ce89d5cfddb49de044b12",
+        "source_license": "MIT; see LICENSE. Copyright (c) 2020 Kyobi S. Kakaria, Benjamin L. de Bivort and Ioannis Pisokas",
+        "upstream_shape": [
+          62,
+          62
+        ],
+        "active_units": 60,
+        "directed_edges": 326,
+        "orientation": "upstream matrix[target,source]; source driver transposes before calling simulator",
+        "strength_evidence": "collect_stats_long_run.m lines395-433; these are fitted MODEL strengths, not synapse counts",
+        "category_strengths": {
+          "1.0": 6.07203896674184,
+          "1.1": 47.9173822984772,
+          "-1.0": -35.6772759590409,
+          "-1.1": -19.3358579258735,
+          "3.0": 99.9680554605268
+        },
+        "class_counts": {
+          "P-EN": 16,
+          "P-EG": 18,
+          "E-PG": 18,
+          "Delta7": 8
+        },
+        "derivation": [
+          "Verify exact MAT SHA256",
+          "Read con_matrix",
+          "Discard only all-zero rows/columns60,61",
+          "Emit each nonzero as source=column,target=row",
+          "Map category labels through published parameter set",
+          "No pruning, random replacement, or invented neurons"
+        ],
+        "limitations": [
+          "Not an EM-derived individual-neuron connectome",
+          "Representative model units collapse multiple anatomical cells",
+          "Anatomical overlap motivated wiring; connection strengths were optimized",
+          "No measured fly membrane dynamics or real watch-sensor calibration",
+          "No whole-brain, consciousness, organism or biological-equivalence claim",
+          "Deterministic fixed-point rate adaptation is a new dynamics model unless equivalence is demonstrated"
+        ],
+        "cue_mapping": "EPG34..42 and43..51 each use [0,45,90,135,180,225,270,315,0] degrees from upstream cue code; model-relative, not compass calibrated",
+        "pen_half_convention": "A=0..7;B=8..15; upstream comments disagree on hemisphere naming; establish rotation sign empirically",
+        "files": {
+          "pisokas2020_cx60_edges.csv": {
+            "bytes": 9319,
+            "sha256": "b9066dd86199a76038eab7f288adf910a32525e2060460af06df1351d87245d0"
+          },
+          "pisokas2020_cx60_nodes.json": {
+            "bytes": 9839,
+            "sha256": "8e498d66dfd4d6432c20cd6194557ba0a7d8fe8f8c8d7dc477124b00c36df297"
+          },
+          "connectivity_matrix_drosophila_mine_case_5_9cols_labels1.mat": {
+            "bytes": 901,
+            "sha256": "abfdcb2918e3637e41d4ba7b7438e512f545dac6553ce89d5cfddb49de044b12"
+          },
+          "collect_stats_long_run.m": {
+            "bytes": 105329,
+            "sha256": "c24f14c2d6e98f29ba604f289337b3057815e68562edd7504f6d57643fd8e1a1"
+          },
+          "PBexperimentModified.m": {
+            "bytes": 20252,
+            "sha256": "13e71dcaf45550adfd9861ea9711c5afcec0834050700ae8c31fc185b8d62bfc"
+          },
+          "flyLI2.m": {
+            "bytes": 3656,
+            "sha256": "92adf312cab38bd012fa7d68a8aca1d38ff9639c8f095a6f9df755a7b488d0b0"
+          },
+          "flyLIF2.m": {
+            "bytes": 4197,
+            "sha256": "76a0828fad72bc5611096e836e10e2cecf3624629858589ee4b9f897ebe54431"
+          },
+          "LICENSE": {
+            "bytes": 1116,
+            "sha256": "5d57b788313bac36d1b33f2c1e24c1ae42707cc45bbc983ade7930b179f6abb1"
+          }
+        }
+      },
+      "license_notice": "MIT License\n\nCopyright (c) 2020 Kyobi S. Kakaria, Benjamin L. de Bivort and Ioannis Pisokas\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+    }
+  ]
+}

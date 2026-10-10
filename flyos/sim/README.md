@@ -109,7 +109,7 @@ convergence, and actual display visibility remain unproved here.
 ## Replay exporter and one-shot pulses
 
 `export_interaction_trace.c` combines this model with the existing Brain64 and
-semantic-palette renderer. Its seven scenarios are deterministic executable
+semantic-palette renderer. Its nine scenarios are deterministic executable
 fixtures. A released FlyOS key retains one pending pulse until an eligible
 HOME rendering. Native/invalid/USB frames neither consume that pulse nor
 inject it into the neural step. An eligible HOME frame injects and clears it
@@ -181,3 +181,18 @@ Node/native differential tests compare every activation, framebuffer byte and
 state field. DOM tests exercise the real Wasm but stub canvas rendering; they
 are not browser layout, real-pointer-device or visual QA. The included preview
 images/animation are generated from real C frames, not browser screenshots.
+
+## Alternate published-topology model
+
+The bridge now supports model 1, CX60, beside unchanged model 0 Brain64. Model
+selection begins a fresh isolated host session and clears held input/history.
+CX60 uses all 60 connected representative units and 326 edges of a pinned
+published heading-circuit model, with explicit new fixed-point rate dynamics.
+Watch keys/sensors retain policy telemetry but do not drive CX60; the separate
+landmark/P-EN input API does not drive Brain64. Both expose the same stable
+64-slot activation and 57,600-byte pixel buffers. Extra CX60 slots stay zero.
+
+Connectivity getters expose the actual C graph and source strengths. JavaScript
+only lays out and inspects those values; it does not reimplement the dynamics
+or fabricate links. [`CX60.md`](CX60.md) documents every biological assumption,
+source, equation, coefficient, input range and readout limitation.

@@ -172,13 +172,24 @@ color roles, preview export, complete key-sequence ownership, redraw policy,
 and deterministic behavior. Target builds require a
 local ARM toolchain plus byte-pinned firmware evidence that is not distributed here.
 
-## Play with the offline specimen
+## Explore the offline circuit observatory
 
-The lab now has a live neural sandbox as well as nine deterministic replays.
-Hold the watch keys, inject motor bursts or movement, remove stimuli, vary
-synthetic sensor inputs, and reset or randomize the specimen seed. Every
-activation and framebuffer pixel is computed by the real C implementation.
-The standalone page needs no server or network.
+The lab opens a published-topology circuit explorer: 60 representative model
+populations and all 326 directed connections from the Drosophila heading model
+of [Pisokas, Heinze and Webb (eLife 2020)](https://doi.org/10.7554/eLife.53985).
+Move a synthetic landmark, inject a P-EN A/B drive, remove the cue, and inspect
+any unit or pathway. Source strengths and implemented coefficients are visible
+separately. The larger SVG is a schematic, not anatomical geometry.
+
+The topology is anatomy-constrained research-model data, not an EM-derived
+individual-neuron connectome. Our bounded fixed-point rate dynamics are an
+explicit simplification, not a replication of the paper's spiking simulator.
+See [the complete provenance, equations and limitations](flyos/sim/CX60.md).
+
+The original hand-authored Brain64 remains selectable, with held-key controls,
+motor bursts, synthetic watch sensors and deterministic seeds. Nine policy
+replays remain available. Every activation and framebuffer pixel comes from C;
+the page needs no server or network.
 
 After the host build, generate a replay-only bundle:
 
@@ -205,7 +216,7 @@ python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interac
 
 Use the matching `Scripts/python.exe` path on Windows. Node is required for
 build validation. Compiler installation needs registry access; the emitted
-page is entirely offline. Its live engine is 9,456 bytes in the tested build,
+page is entirely offline. Its live engine is 13,890 bytes in the tested build,
 imports nothing, and has a fixed 128 KiB memory limit. Replay mode still works
 when WebAssembly is unavailable. The live view selector is a supplied fixture,
 not a native view reader. See [test and build instructions](flyos/tests/README.md).
@@ -233,6 +244,7 @@ See [host policy semantics](flyos/sim/README.md) and
 - [x] Add host-only input ownership and redraw regression lab
 - [x] Run the real C network interactively in an offline WebAssembly sandbox
 - [x] Exercise bounded synthetic view snapshots and their ABA limitation
+- [x] Add published CX60 topology, inspectable connections and a circuit observatory
 - [ ] Prove target storage ownership and safe redraw context
 - [ ] Verify complete sequence ownership on hardware
 - [ ] Bind safe heart-rate, motion, and charging observations

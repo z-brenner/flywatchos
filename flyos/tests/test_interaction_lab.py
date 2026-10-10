@@ -1,6 +1,7 @@
 """Exercise the real C trace exporter and the standalone offline lab artifact."""
 import base64
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -14,7 +15,36 @@ EXPECTED = {'home-controls', 'native-escape', 'view-transition', 'usb-detach',
             'retry-exhaustion', 'stale-ack', 'invalid-view',
             'classifier-guards', 'classifier-stability'}
 
+spec = importlib.util.spec_from_file_location('lab_builder', BUILDER)
+builder = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(builder)
+
 class InteractionLabTests(unittest.TestCase):
+    def test_model_metadata_rejects_unsafe_or_ambiguous_schema(self):
+        model = dict(id=0, key='baseline', label='Abstract baseline',
+                     description='A hand-authored model.', biological_basis='None.',
+                     approximations=['Not a connectome.'], scale=1024,
+                     units=[dict(id=0, label='N00', group='Input', role='sensory')],
+                     sources=[])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'models.json'
+            def check(value):
+                path.write_text(json.dumps(value))
+                return builder.load_model_metadata(path)
+            self.assertEqual(check({'models': [model]}), [model])
+            invalid = [
+                {'models': [model, model]},
+                {'models': [{**model, 'scale': 0}]},
+                {'models': [{**model, 'id': True}]},
+                {'models': [{**model, 'units': []}]},
+                {'models': [{**model, 'units': [dict(id=1, label='N01', group='X')]}]},
+                {'models': [{**model, 'sources': [dict(title='Unsafe', url='javascript:alert(1)')]}]},
+                {'models': [{**model, 'approximations': 'Not an array'}]},
+            ]
+            for value in invalid:
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    check(value)
+
     def export(self):
         self.assertTrue(EXPORTER and EXPORTER.is_file(), 'C interaction exporter has not been built')
         result = subprocess.run([str(EXPORTER)], capture_output=True, check=True)

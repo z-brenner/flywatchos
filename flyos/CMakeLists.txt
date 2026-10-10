@@ -122,7 +122,7 @@ flyos_strict_warnings(flyos-view-classifier-tests)
 add_test(NAME flyos-view-classifier-tests COMMAND flyos-view-classifier-tests)
 
 add_executable(flyos-live-bridge-tests
-    tests/test_live_bridge.c sim/live_bridge.c sim/host_policy.c
+    tests/test_live_bridge.c sim/live_bridge.c sim/host_policy.c sim/cx_circuit.c
     fly/brain64.c display/neural_specimen.c)
 target_include_directories(flyos-live-bridge-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(flyos-live-bridge-tests PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
@@ -130,10 +130,18 @@ flyos_strict_warnings(flyos-live-bridge-tests)
 add_test(NAME flyos-live-bridge-tests COMMAND flyos-live-bridge-tests)
 
 add_executable(flyos-live-bridge-trace
-    tests/live_bridge_trace.c sim/live_bridge.c sim/host_policy.c
+    tests/live_bridge_trace.c sim/live_bridge.c sim/host_policy.c sim/cx_circuit.c
     fly/brain64.c display/neural_specimen.c)
 target_include_directories(flyos-live-bridge-trace PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(flyos-live-bridge-trace PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
 flyos_strict_warnings(flyos-live-bridge-trace)
 add_test(NAME flyos-live-wasm-build-failure-tests
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_build_live_wasm.py)
+
+add_executable(flyos-cx-circuit-tests tests/test_cx_circuit.c sim/cx_circuit.c)
+target_include_directories(flyos-cx-circuit-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(flyos-cx-circuit-tests PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
+flyos_strict_warnings(flyos-cx-circuit-tests)
+add_test(NAME flyos-cx-circuit-tests COMMAND flyos-cx-circuit-tests)
+add_test(NAME flyos-cx-provenance-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cx_provenance.py)

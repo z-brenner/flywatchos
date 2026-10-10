@@ -9,6 +9,41 @@ let liveBusy = false;
 let liveCanvas = null;
 let liveContext = null;
 const livePalette = [[8,10,9],[54,69,59],[218,231,211],[135,184,122],[184,122,135],[242,210,94]];
+const circuitTopologies = new Map();
+
+function circuitMetadata(frame) {
+  const id = frame.model ?? 0;
+  const metadata = data.models.find(model => model.id === id);
+  if (!metadata) throw new Error('unknown model metadata');
+  return {...metadata, edges: circuitTopologies.get(id) ?? [],
+    topology_available: circuitTopologies.has(id)};
+}
+function liveReadTopology() {
+  const id = labEngine.fly_lab_model();
+  const metadata = data.models.find(model => model.id === id);
+  const count = labEngine.fly_lab_model_node_count();
+  const edgeCount = labEngine.fly_lab_edge_count();
+  if (!metadata || count !== metadata.units.length || count < 1 || count > 64 ||
+      edgeCount < 0 || edgeCount > 4096) throw new Error('invalid C model topology');
+  const edges = [];
+  for (let i = 0; i < edgeCount; i++) {
+    const source = labEngine.fly_lab_edge_source(i);
+    const target = labEngine.fly_lab_edge_target(i);
+    const raw = labEngine.fly_lab_edge_raw_weight(i);
+    const denominator = labEngine.fly_lab_edge_denominator(i);
+    const sign = labEngine.fly_lab_edge_sign(i);
+    const coefficientQ = labEngine.fly_lab_edge_weight_q(i);
+    if (source < 0 || source >= count || target < 0 || target >= count ||
+        !Number.isFinite(raw) || raw <= 0 || denominator < 1 || ![-1, 1].includes(sign) ||
+        !Number.isInteger(coefficientQ)) {
+      throw new Error('invalid C connection metadata');
+    }
+    edges.push({source, target, weight: raw * sign, raw_weight: raw,
+      scale: denominator, coefficient_q: coefficientQ, sign,
+      kind: sign < 0 ? 'negative' : 'positive'});
+  }
+  circuitTopologies.set(id, edges);
+}
 
 function liveError(error) {
   pause();
@@ -44,9 +79,15 @@ function liveCapture(action) {
     redraw_pending: false, redraw_complete: false, redraw_exhausted: false,
     attempts: 0, budget: 0, epoch: 0, enqueued: false,
     safe_callback: false, source_locked: false, usb_locked: false,
-    state: labEngine.fly_lab_state(), neurons, image: liveCanvas.toDataURL('image/png'),
+    state: labEngine.fly_lab_state(), model: labEngine.fly_lab_model(),
+    node_count: labEngine.fly_lab_model_node_count(), neurons, image: liveCanvas.toDataURL('image/png'),
+    stimulus: {angle: labEngine.fly_lab_stimulus_angle(),
+      strength: labEngine.fly_lab_stimulus_strength(), turn: labEngine.fly_lab_stimulus_turn()},
+    readout_heading: labEngine.fly_lab_readout_heading(),
+    readout_strength: labEngine.fly_lab_readout_strength(),
     classifier: {source:'manual-live-context',reason:'not-run',reads:0,nodes:0,limitation:'none'}
   };
+  if (frame.model === 1) frame.detail = 'Published fly heading-circuit topology; simplified fixed-point rate dynamics. The phase readout is the strongest E-PG sector, not a measured behavior or calibrated heading.';
   if (view !== 'HOME' || frame.usb) frame.detail = 'Native framebuffer preserved. The network continues on the host; pending release pulses wait for an eligible HOME frame.';
   live.frames.push(frame);
   if (live.frames.length > LIVE_HISTORY_LIMIT) live.frames.shift();
@@ -128,6 +169,42 @@ function liveSetContext() {
     liveStep('Synthetic view changed');
   } catch (error) { liveError(error); }
 }
+function liveStimulus(capture = true) {
+  if (!labEngine || !live) return;
+  const angle = liveInteger($('cue-angle').value, 0, 359, 'cue angle');
+  const strength = liveInteger($('cue-strength').value, 0, 1024, 'cue strength');
+  const turn = liveInteger($('turn-drive').value, -1024, 1024, 'turn drive');
+  if (!liveCommand('fly_lab_set_stimulus', [angle, strength, turn])) {
+    throw new Error('stimulus rejected by C');
+  }
+  $('cue-angle-value').textContent = angle;
+  $('cue-strength-value').textContent = strength;
+  $('turn-drive-value').textContent = `${turn > 0 ? '+' : ''}${turn}`;
+  if (capture) liveStep('Circuit stimulus changed');
+}
+function liveCircuitPreset(kind) {
+  if (!liveMode || !labEngine || labEngine.fly_lab_model() !== 1) return;
+  pause();
+  try {
+    if (kind === 'hide' || kind === 'return') {
+      $('cue-strength').value = kind === 'hide' ? '0' : '768';
+      liveStimulus(false);
+      for (let i = 0; i < 8; i++) {
+        liveCommand('fly_lab_step');
+        liveCapture(kind === 'hide' ? 'Landmark removed' : 'Landmark restored');
+      }
+    } else {
+      $('turn-drive').value = kind === 'left' ? '-768' : '768';
+      liveStimulus(false);
+      for (let i = 0; i < 12; i++) {
+        liveCommand('fly_lab_step');
+        liveCapture(kind === 'left' ? 'P-EN B drive (negative)' : 'P-EN A drive (positive)');
+      }
+      $('turn-drive').value = '0';
+      liveStimulus(false); liveStep('Turn drive released');
+    }
+  } catch (error) { liveError(error); }
+}
 function liveReset() {
   if (!labEngine) return;
   pause();
@@ -136,21 +213,55 @@ function liveReset() {
     $('live-notice').textContent = 'Choose a whole-number seed from 0 to 4294967295.';
     $('live-notice').classList.add('amber'); return;
   }
+  let model;
+  try { model = liveInteger($('live-model').value, 0, 7, 'model selection'); }
+  catch (error) { liveError(error); return; }
+  if (!data.models.some(item => item.id === model)) {
+    liveError(new Error('unknown model selection')); return;
+  }
   liveSeed = seed;
   liveSourceResets.forEach(reset => reset());
   liveKeys.clear(); liveHasEvent = false;
-  live = {id:'live-specimen',title:'Your live specimen',summary:'Persistent host C network with synthetic inputs.',seed:liveSeed,
-    command_schema:1,command_history_complete:true,history_limit:LIVE_HISTORY_LIMIT,commands:[],frames:[]};
-  liveCommand('fly_lab_reset', [liveSeed]);
+  const metadata = data.models.find(item => item.id === model);
+  live = {id:'live-specimen',title:metadata.label,summary:metadata.description,seed:liveSeed,model,
+    model_metadata:metadata,command_schema:2,command_history_complete:true,
+    history_limit:LIVE_HISTORY_LIMIT,commands:[],frames:[]};
+  if (!liveCommand('fly_lab_reset_model', [model, liveSeed])) {
+    liveError(new Error('model rejected by C')); return;
+  }
+  liveReadTopology();
+  live.topology = circuitTopologies.get(model);
+  selectedNeuron = model === 1 ? 34 : Math.min(selectedNeuron, metadata.units.length - 1);
   $('live-view').value = '1'; $('live-usb').checked = false;
   $('hr-on').checked = false; $('motion-on').checked = false; $('charging-on').checked = false;
   $('battery-on').checked = true; $('battery-input').value = '87'; $('hr-input').value = '72';
   $('motion-input').value = '0'; $('charging-input').checked = false;
   liveSensors(false);
+  $('cue-angle').value = '0'; $('cue-strength').value = '768'; $('turn-drive').value = '0';
+  liveStimulus(false);
   liveCommand('fly_lab_step');
   $('live-notice').classList.remove('amber');
-  $('live-notice').textContent = `Specimen ${liveSeed}. Hold the five watch keys, try a burst, or run the network. All signals are synthetic.`;
+  $('live-notice').textContent = model === 0
+    ? `Specimen ${liveSeed}. Hold the watch keys or try a burst. This baseline is hand-authored; all signals are synthetic.`
+    : 'Published circuit topology with simplified rate dynamics. Move the landmark, inject a turn, or remove the cue. No calibrated clock, persistent heading memory, or validated path integration is claimed.';
+  liveUpdateModelControls(metadata);
   liveCapture('Specimen seeded');
+}
+function liveUpdateModelControls(metadata) {
+  const biological = metadata.id !== 0;
+  $('circuit-stimulus-controls').hidden = !biological;
+  document.querySelector('.presets').hidden = biological;
+  document.querySelector('.sensor-options').hidden = biological;
+  $('live-seed').disabled = biological;
+  $('live-random').disabled = biological;
+  $('live-reset').textContent = biological ? 'RESET CIRCUIT' : 'RESET SEED';
+  $('live-seed').title = biological ? 'This circuit is deterministic and does not use a seed.' : 'Deterministic baseline seed';
+  $('scenario-count').textContent = String(metadata.units.length);
+  $('scenario-total').textContent = 'UNITS';
+  $('scenario-title').textContent = biological ? 'A compass made of connections.' : 'A tiny network. Yours to disturb.';
+  $('scenario-summary').textContent = metadata.description;
+  $('model-description').textContent = metadata.description;
+  $('model-basis').textContent = metadata.biological_basis;
 }
 function enterLive() {
   if (!labEngine || liveMode) return;
@@ -159,17 +270,14 @@ function enterLive() {
   $('mode-badge').textContent='LIVE C / OFFLINE';
   $('live-mode').setAttribute('aria-pressed','true');
   document.querySelectorAll('.scenario').forEach(b => b.setAttribute('aria-pressed','false'));
-  $('scenario-title').textContent = 'A tiny nervous system. Yours to disturb.';
-  $('scenario-summary').textContent = 'Hold a key. Inject movement. Inspect every neuron as the real C model responds. Nothing leaves this page.';
-  $('scenario-count').textContent = '64';
-  $('scenario-total').textContent = 'CELLS';
   $('state-label').textContent = 'NETWORK STATE';
   $('activity-label').textContent = 'ACTIVE CELLS';
   $('epoch-label').textContent = 'MODEL STEP';
   if (!live) liveReset(); else { frameIndex = live.frames.length-1; $('timeline').max=frameIndex; liveCapture('Sandbox resumed'); }
+  liveUpdateModelControls(circuitMetadata(live.frames.at(-1)));
 }
 function livePreset(kind) {
-  if (!liveMode || !labEngine) return;
+  if (!liveMode || !labEngine || labEngine.fly_lab_model() !== 0) return;
   try {
     if (kind === 'burst') {
       // Each stimulus is an actual complete C-owned key sequence.
@@ -193,6 +301,9 @@ function livePreset(kind) {
 }
 $('live-mode').addEventListener('click', enterLive);
 $('live-reset').addEventListener('click', liveReset);
+$('live-model').addEventListener('change', () => {
+  if (liveMode) liveReset();
+});
 $('live-random').addEventListener('click', () => {
   const value = new Uint32Array(1); crypto.getRandomValues(value); $('live-seed').value=String(value[0]); liveReset();
 });
@@ -203,6 +314,16 @@ for (const id of ['hr-on','hr-input','motion-on','motion-input','battery-on','ba
 $('burst').addEventListener('click',()=>livePreset('burst'));
 $('movement').addEventListener('click',()=>livePreset('movement'));
 $('rest').addEventListener('click',()=>livePreset('rest'));
+for (const id of ['cue-angle', 'cue-strength', 'turn-drive']) {
+  $(id).addEventListener('input', () => {
+    if (!liveMode) return;
+    try { liveStimulus(); } catch (error) { liveError(error); }
+  });
+}
+for (const [id, kind] of [['turn-left', 'left'], ['turn-right', 'right'],
+                         ['cue-hide', 'hide'], ['cue-return', 'return']]) {
+  $(id).addEventListener('click', () => liveCircuitPreset(kind));
+}
 document.querySelectorAll('.key').forEach((button,key) => {
   let keyboardHandled = false;
   let keyboardHeld = false;
@@ -250,12 +371,21 @@ async function initializeLive() {
     const required=['fly_lab_reset','fly_lab_event','fly_lab_set_context','fly_lab_set_sensors','fly_lab_step',
       'fly_lab_pixels','fly_lab_activations','fly_lab_pixel_count','fly_lab_neuron_count','fly_lab_route',
       'fly_lab_held','fly_lab_active','fly_lab_pulse','fly_lab_delivered_pulse','fly_lab_buttons','fly_lab_state','fly_lab_epoch',
-      'fly_lab_view','fly_lab_usb'];
+      'fly_lab_view','fly_lab_usb','fly_lab_reset_model','fly_lab_model','fly_lab_model_node_count',
+      'fly_lab_edge_count','fly_lab_edge_source','fly_lab_edge_target','fly_lab_edge_raw_weight',
+      'fly_lab_edge_denominator','fly_lab_edge_sign','fly_lab_edge_weight_q','fly_lab_set_stimulus',
+      'fly_lab_stimulus_angle','fly_lab_stimulus_strength','fly_lab_stimulus_turn',
+      'fly_lab_readout_heading','fly_lab_readout_strength'];
     if (!(exports.memory instanceof WebAssembly.Memory) || required.some(name=>typeof exports[name]!=='function') ||
         exports.fly_lab_pixel_count()!==57600 || exports.fly_lab_neuron_count()!==64) throw new Error('unsupported live engine interface');
     liveCanvas=document.createElement('canvas'); liveCanvas.width=240;liveCanvas.height=240;
     liveContext=liveCanvas.getContext('2d');if(!liveContext)throw new Error('canvas unavailable');
     labEngine=exports;
+    // Cache baseline topology for historical replay even when the new circuit
+    // is the first selected live model. This pre-session reset is not a replay
+    // command and cannot affect the following explicit session reset.
+    labEngine.fly_lab_reset(0);
+    liveReadTopology();
     $('live-mode').disabled=false;
     $('live-status').textContent='Ready. Real C → WebAssembly. No server.';
     enterLive();

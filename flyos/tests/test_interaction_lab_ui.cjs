@@ -30,6 +30,9 @@ class NoNetwork extends ResourceLoader { fetch(url) { throw new Error('unexpecte
   assert.equal(d.querySelectorAll('.scenario').length,9);
   assert.equal(ev('liveMode'),true,'bundled live engine opens the sandbox, paused');
   assert.equal(timers.size,0);
+  assert.equal(ev('labEngine.fly_lab_model()'),1,'new circuit is the default, with baseline selectable');
+  assert.equal(ev('labEngine.fly_lab_model_node_count()'),60);
+  $('live-model').value='0';change('live-model');
   click('live-mode');
   assert.equal($('live-controls').hidden,false);
   assert.equal(ev('liveMode'),true);assert.equal(ev('live.frames.length'),1);
@@ -106,6 +109,66 @@ class NoNetwork extends ResourceLoader { fetch(url) { throw new Error('unexpecte
   assert.equal(finalPixels.toString('hex'),ev('Array.from(new Uint8Array(labEngine.memory.buffer,labEngine.fly_lab_pixels(),57600)).map(v=>v.toString(16).padStart(2,"0")).join("")'));
   for(const name of ['route','held','active','pulse','delivered_pulse','buttons','state','epoch','view','usb','ready','valid_mask','rendered'])
     assert.equal(copy['fly_lab_'+name](),ev(`labEngine.fly_lab_${name}()`),name);
+  // Switching models starts an isolated, paused session without leaking held
+  // controls or assigning biological names to the abstract baseline.
+  press(1);click('play');assert.equal(timers.size,1);
+  $('live-model').value='1';change('live-model');
+  assert.equal(timers.size,0);assert.equal(ev('labEngine.fly_lab_held()'),0);
+  assert.equal(ev('live.frames.length'),1);assert.equal(ev('live.model'),1);
+  assert.equal(ev('live.frames[0].node_count'),60);
+  assert.equal(ev('circuitMetadata(live.frames[0]).units.length'),60);
+  assert.equal(ev('circuitMetadata(live.frames[0]).edges.length'),326);
+  assert.equal(d.querySelectorAll('.circuit-node').length,60);
+  assert.equal(d.querySelectorAll('.cell:not([hidden])').length,60);
+  assert.equal($('model-license-details').hidden,false);
+  assert.match($('model-license').textContent,/MIT License/);
+  assert.equal($('live-seed').disabled,true);
+  assert.equal($('live-random').disabled,true);
+  const inspectEpoch=ev('labEngine.fly_lab_epoch()');
+  d.querySelector('[data-unit-index="34"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+  d.querySelector('[data-unit-index="34"]').dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+  assert.equal(ev('selectedNeuron'),35);
+  assert.equal(ev('labEngine.fly_lab_epoch()'),inspectEpoch,'unit navigation does not step the model');
+  const pathway=$('circuit-pathways').querySelector('button');assert.ok(pathway);pathway.click();
+  assert.match($('circuit-edge-detail').textContent,/Published model strength/);
+  assert.match($('circuit-edge-detail').textContent,/Implemented coefficient/);
+  assert.equal(d.querySelectorAll('#model-sources a').length,3);
+  assert.equal($('circuit-stimulus-controls').hidden,false);
+  assert.equal(d.querySelector('.sensor-options').hidden,true);
+  assert.equal(ev('live.commands[0][0]'),'fly_lab_reset_model');
+  assert.equal(ev('live.commands[0][1]'),1);
+  const circuitStart=ev('live.frames[0].neurons.join(",")');
+  $('cue-angle').value='180';input('cue-angle');
+  assert.equal(ev('labEngine.fly_lab_stimulus_angle()'),180);
+  click('cue-hide');assert.equal(ev('labEngine.fly_lab_stimulus_strength()'),0);
+  click('cue-return');assert.equal(ev('labEngine.fly_lab_stimulus_strength()'),768);
+  click('turn-left');assert.equal(ev('labEngine.fly_lab_stimulus_turn()'),0);
+  click('turn-right');assert.equal(ev('labEngine.fly_lab_stimulus_turn()'),0);
+  assert.notEqual(ev('live.frames.at(-1).neurons.join(",")'),circuitStart);
+  assert.equal(ev('live.frames.every(f=>f.model===1)'),true);
+  assert.equal(ev('live.frames.every(f=>f.neurons.slice(60).every(value=>value===0))'),true);
+  // Exact export replay includes circuit selection and every synthetic cue.
+  click('export');
+  const circuitExport=JSON.parse(await new Promise((resolve,reject)=>{
+    const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsText(exportedBlob);
+  }));
+  for(const [method,...args] of circuitExport.scenario.commands)copy[method](...args);
+  for(const name of ['model','model_node_count','readout_heading','readout_strength',
+      'stimulus_angle','stimulus_strength','stimulus_turn','epoch'])
+    assert.equal(copy['fly_lab_'+name](),ev(`labEngine.fly_lab_${name}()`),name);
+  assert.equal(Array.from(new Int16Array(copy.memory.buffer,copy.fly_lab_activations(),64)).join(','),
+    ev('Array.from(new Int16Array(labEngine.memory.buffer,labEngine.fly_lab_activations(),64)).join(",")'));
+  assert.equal(Buffer.from(new Uint8Array(copy.memory.buffer,copy.fly_lab_pixels(),57600)).toString('hex'),
+    ev('Array.from(new Uint8Array(labEngine.memory.buffer,labEngine.fly_lab_pixels(),57600)).map(v=>v.toString(16).padStart(2,"0")).join("")'));
+  click('live-reset');assert.equal(ev('live.frames[0].neurons.join(",")'),circuitStart);
+  const circuitEpoch=ev('labEngine.fly_lab_epoch()');
+  $('live-model').value='';change('live-model');
+  assert.equal(ev('labEngine.fly_lab_model()'),1);
+  assert.equal(ev('labEngine.fly_lab_epoch()'),circuitEpoch);
+  $('live-model').value='0';change('live-model');
+  assert.equal($('circuit-stimulus-controls').hidden,true);
+  assert.equal(d.querySelector('.sensor-options').hidden,false);
+  assert.equal(ev('circuitMetadata(live.frames[0]).edges.length'),90);
   assert.equal(timers.size,0);assert.deepEqual(errors,[]);
   console.log('PASS: real-Wasm DOM controls, bursts, sensors, chord focus, cancellation, modal pulses, timers, mode switch, blur, deterministic reset, validation, bounded history, scrubbing, exact exported-command replay. Canvas is stubbed; browser layout unverified.');
   w.close();

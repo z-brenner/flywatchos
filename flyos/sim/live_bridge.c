@@ -1,5 +1,6 @@
 #include "sim/live_bridge.h"
 #include "sim/host_policy.h"
+#include "sim/cx_circuit.h"
 #include "display/neural_specimen.h"
 
 #ifndef FLY_NEURAL_SPECIMEN_HOST_PREVIEW
@@ -10,6 +11,9 @@
  * locations, target callbacks, devices, filesystem or external services. */
 typedef struct {
     FlyBrain64 brain;
+    FlyCxCircuit circuit;
+    FlyCxInputs stimulus;
+    uint8_t model;
     FlyBrainInputs sensors;
     FlySimKeys keys;
     FlySimInputContext context;
@@ -22,15 +26,38 @@ typedef struct {
 
 static FlyLiveLab lab;
 
-void fly_lab_reset(uint32_t seed) {
+int fly_lab_reset_model(int model, uint32_t seed) {
+    if (model != FLY_LAB_MODEL_BRAIN64 && model != FLY_LAB_MODEL_CX) return 0;
     lab = (FlyLiveLab){0};
+    lab.model = (uint8_t)model;
     lab.context = (FlySimInputContext){FLY_SIM_VIEW_HOME, false, true};
     lab.last_route = -1;
     fly_sim_keys_init(&lab.keys);
-    fly_brain64_seed(&lab.brain, seed, 0u);
-    fly_neural_specimen_render(lab.pixels, &lab.brain, &lab.sensors, 0u);
+    if (model == FLY_LAB_MODEL_CX) {
+        fly_cx_reset(&lab.circuit);
+        lab.stimulus.cue_strength = 768;
+        fly_cx_render(lab.pixels, &lab.circuit);
+    } else {
+        fly_brain64_seed(&lab.brain, seed, 0u);
+        fly_neural_specimen_render(lab.pixels, &lab.brain, &lab.sensors, 0u);
+    }
     lab.rendered = 1u;
+    return 1;
 }
+void fly_lab_reset(uint32_t seed) { (void)fly_lab_reset_model(FLY_LAB_MODEL_BRAIN64, seed); }
+uint32_t fly_lab_model(void) { return lab.model; }
+uint32_t fly_lab_model_node_count(void) { return lab.model == FLY_LAB_MODEL_CX ? FLY_CX_UNITS : FLY_BRAIN64_NEURONS; }
+int fly_lab_set_stimulus(int cue_degrees, int cue_strength, int turn_drive) {
+    if (cue_degrees < 0 || cue_degrees > 359 || cue_strength < 0 || cue_strength > 1024 ||
+        turn_drive < -1024 || turn_drive > 1024) return 0;
+    lab.stimulus = (FlyCxInputs){(int16_t)cue_degrees, (int16_t)cue_strength, (int16_t)turn_drive};
+    return 1;
+}
+int fly_lab_stimulus_angle(void) { return lab.stimulus.cue_degrees; }
+int fly_lab_stimulus_strength(void) { return lab.stimulus.cue_strength; }
+int fly_lab_stimulus_turn(void) { return lab.stimulus.turn_drive; }
+int fly_lab_readout_heading(void) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_heading(&lab.circuit) : -1; }
+int fly_lab_readout_strength(void) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_strength(&lab.circuit) : 0; }
 
 int fly_lab_event(int key, int phase) {
     if (key < 0 || key >= (int)FLY_SIM_KEY_COUNT ||
@@ -74,9 +101,16 @@ void fly_lab_step(void) {
                             !lab.context.usb_mass_storage);
     lab.delivered_pulse = lab.rendered ? lab.pending_pulse : 0u;
     lab.sensors.buttons = lab.keys.flyos_held | lab.delivered_pulse;
-    fly_brain64_step(&lab.brain, &lab.sensors);
-    fly_neural_specimen_render_if_home(lab.pixels, lab.rendered,
-                                       &lab.brain, &lab.sensors, tick);
+    if (lab.model == FLY_LAB_MODEL_CX) {
+        fly_cx_step(&lab.circuit, &lab.stimulus);
+        for (unsigned n = 0; n < FLY_CX_SLOTS; ++n)
+            lab.brain.activation[n] = lab.circuit.activation[n];
+        if (lab.rendered) fly_cx_render(lab.pixels, &lab.circuit);
+    } else {
+        fly_brain64_step(&lab.brain, &lab.sensors);
+        fly_neural_specimen_render_if_home(lab.pixels, lab.rendered,
+                                           &lab.brain, &lab.sensors, tick);
+    }
     if (lab.rendered) lab.pending_pulse = 0u;
 }
 
@@ -100,9 +134,21 @@ uint32_t fly_lab_pulse(void) { return lab.pending_pulse; }
 uint32_t fly_lab_delivered_pulse(void) { return lab.delivered_pulse; }
 uint32_t fly_lab_buttons(void) { return lab.sensors.buttons; }
 uint32_t fly_lab_state(void) { return lab.brain.state; }
-uint32_t fly_lab_epoch(void) { return lab.brain.epoch; }
+uint32_t fly_lab_epoch(void) { return lab.model == FLY_LAB_MODEL_CX ? lab.circuit.epoch : lab.brain.epoch; }
 uint32_t fly_lab_view(void) { return (uint32_t)lab.context.view; }
 uint32_t fly_lab_usb(void) { return (uint32_t)lab.context.usb_mass_storage; }
 uint32_t fly_lab_ready(void) { return (uint32_t)lab.context.input_ready; }
 uint32_t fly_lab_valid_mask(void) { return lab.sensors.valid_mask; }
 uint32_t fly_lab_rendered(void) { return lab.rendered; }
+
+uint32_t fly_lab_edge_count(void) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_edge_count() : fly_brain64_edge_count(); }
+int fly_lab_edge_source(int edge) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_edge_source(edge) : fly_brain64_edge_source(edge); }
+int fly_lab_edge_target(int edge) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_edge_target(edge) : fly_brain64_edge_target(edge); }
+double fly_lab_edge_raw_weight(int edge) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_edge_raw_weight(edge) : (fly_brain64_edge_sign(edge) ? 1.0 : 0.0); }
+int fly_lab_edge_denominator(int edge) { return lab.model == FLY_LAB_MODEL_CX ? (fly_cx_edge_sign(edge) ? 100 : 0) : fly_brain64_edge_denominator(edge); }
+int fly_lab_edge_sign(int edge) { return lab.model == FLY_LAB_MODEL_CX ? fly_cx_edge_sign(edge) : fly_brain64_edge_sign(edge); }
+int fly_lab_edge_weight_q(int edge) {
+    if (lab.model == FLY_LAB_MODEL_CX) return fly_cx_edge_weight_q(edge);
+    int denominator = fly_brain64_edge_denominator(edge);
+    return denominator ? fly_brain64_edge_sign(edge) * 1024 / denominator : 0;
+}

@@ -21,6 +21,33 @@ static void equal_brain(const FlyBrain64 *expected) {
     CHECK(fly_lab_epoch() == expected->epoch);
 }
 
+/* Graph queries must read the exact C table used by the legacy integrator. */
+static void test_baseline_connectivity(void) {
+    fly_lab_reset(42u);
+    CHECK(fly_lab_edge_count() == 90u);
+    CHECK(fly_lab_edge_source(0) == 0 && fly_lab_edge_target(0) == 12);
+    CHECK(fly_lab_edge_raw_weight(0) == 1);
+    CHECK(fly_lab_edge_denominator(0) == 4 && fly_lab_edge_sign(0) == 1);
+    CHECK(fly_lab_edge_source(24) == 12 && fly_lab_edge_target(24) == 18);
+    CHECK(fly_lab_edge_denominator(24) == 16 && fly_lab_edge_sign(24) == -1);
+    CHECK(fly_lab_edge_source(89) == 63 && fly_lab_edge_target(89) == 48);
+    for (int edge = 0; edge < 90; ++edge) {
+        CHECK(fly_lab_edge_source(edge) >= 0 && fly_lab_edge_source(edge) < 64);
+        CHECK(fly_lab_edge_target(edge) >= 0 && fly_lab_edge_target(edge) < 64);
+        CHECK(fly_lab_edge_raw_weight(edge) == 1);
+        CHECK(fly_lab_edge_denominator(edge) >= 4 && fly_lab_edge_denominator(edge) <= 32);
+        CHECK(fly_lab_edge_sign(edge) == 1 || fly_lab_edge_sign(edge) == -1);
+    }
+    const int invalid[] = {-1, 90, INT_MIN, INT_MAX};
+    for (unsigned n = 0; n < sizeof(invalid) / sizeof(invalid[0]); ++n) {
+        CHECK(fly_lab_edge_source(invalid[n]) == -1);
+        CHECK(fly_lab_edge_target(invalid[n]) == -1);
+        CHECK(fly_lab_edge_raw_weight(invalid[n]) == 0);
+        CHECK(fly_lab_edge_denominator(invalid[n]) == 0);
+        CHECK(fly_lab_edge_sign(invalid[n]) == 0);
+    }
+}
+
 static void test_reset_matches_portable_core(void) {
     static const uint32_t seeds[] = {0u, 1u, 0x245f1a5u, UINT32_MAX};
     FlyBrain64 expected;
@@ -197,7 +224,87 @@ static void test_optional_sensor_limits_and_clear(void) {
     CHECK(fly_lab_held() == 0u && fly_lab_valid_mask() == 0u && fly_lab_epoch() == 0u);
 }
 
+static void test_model_selection_and_stimulus(void) {
+    int16_t saved[64];
+    fly_lab_reset(123u);
+    CHECK(fly_lab_model() == 0u && fly_lab_model_node_count() == 64u);
+    CHECK(fly_lab_readout_heading() == -1 && fly_lab_readout_strength() == 0);
+    CHECK(fly_lab_reset_model(1, 123u) == 1);
+    CHECK(fly_lab_model() == 1u && fly_lab_model_node_count() == 60u);
+    CHECK(fly_lab_neuron_count() == 64u && fly_lab_edge_count() == 326u);
+    CHECK(fly_lab_stimulus_angle() == 0 && fly_lab_stimulus_strength() == 768);
+    CHECK(fly_lab_stimulus_turn() == 0);
+    CHECK(fly_lab_readout_heading() == -1 && fly_lab_epoch() == 0u);
+    CHECK(fly_lab_edge_source(0) == 34 && fly_lab_edge_target(0) == 0);
+    CHECK(fly_lab_edge_raw_weight(0) == 99.9680554605268);
+    CHECK(fly_lab_edge_sign(0) == 1 && fly_lab_edge_weight_q(0) == 1024);
+    CHECK(fly_lab_edge_raw_weight(1) == 35.6772759590409);
+    CHECK(fly_lab_edge_sign(1) == -1 && fly_lab_edge_weight_q(1) == -365);
+    CHECK(fly_lab_edge_denominator(0) == 100);
+    CHECK(fly_lab_set_stimulus(90, 1024, 0) == 1);
+    fly_lab_step();
+    CHECK(fly_lab_readout_heading() == 90 && fly_lab_readout_strength() == 2048);
+    CHECK(fly_lab_epoch() == 1u && fly_lab_state() == 0u);
+    memcpy(saved, fly_lab_activations(), sizeof(saved));
+    memcpy(expected_pixels, fly_lab_pixels(), sizeof(expected_pixels));
+    const int invalid[][3] = {{-1,0,0},{360,0,0},{0,-1,0},{0,1025,0},
+        {0,0,-1025},{0,0,1025},{INT_MAX,INT_MIN,INT_MAX}};
+    for (unsigned n = 0; n < sizeof(invalid)/sizeof(invalid[0]); ++n) {
+        CHECK(fly_lab_set_stimulus(invalid[n][0], invalid[n][1], invalid[n][2]) == 0);
+        CHECK(fly_lab_stimulus_angle() == 90 && fly_lab_stimulus_strength() == 1024);
+        CHECK(fly_lab_stimulus_turn() == 0);
+    }
+    CHECK(fly_lab_reset_model(-1, 0u) == 0);
+    CHECK(fly_lab_reset_model(2, 0u) == 0);
+    CHECK(fly_lab_reset_model(INT_MAX, 0u) == 0);
+    CHECK(fly_lab_epoch() == 1u && fly_lab_model() == 1u);
+    CHECK(memcmp(saved, fly_lab_activations(), sizeof(saved)) == 0);
+    CHECK(memcmp(expected_pixels, fly_lab_pixels(), sizeof(expected_pixels)) == 0);
+    for (int edge = -1; edge <= 326; ++edge) {
+        if (edge == -1 || edge == 326) {
+            CHECK(fly_lab_edge_source(edge) == -1 && fly_lab_edge_target(edge) == -1);
+            CHECK(fly_lab_edge_raw_weight(edge) == 0.0 && fly_lab_edge_sign(edge) == 0);
+            CHECK(fly_lab_edge_denominator(edge) == 0 && fly_lab_edge_weight_q(edge) == 0);
+        } else {
+            CHECK(fly_lab_edge_source(edge) < 60 && fly_lab_edge_target(edge) < 60);
+            CHECK(fly_lab_edge_raw_weight(edge) > 0.0 && fly_lab_edge_denominator(edge) == 100);
+        }
+    }
+    fly_lab_reset(123u);
+    FlyBrain64 expected;
+    fly_brain64_seed(&expected, 123u, 0u);
+    equal_brain(&expected);
+    CHECK(fly_lab_model() == 0u && fly_lab_model_node_count() == 64u);
+    CHECK(fly_lab_edge_count() == 90u && fly_lab_stimulus_strength() == 0);
+}
+
+static void test_circuit_ignores_watch_inputs_but_preserves_policy(void) {
+    int16_t reference[64];
+    CHECK(fly_lab_reset_model(1, 1u) == 1);
+    for (unsigned n = 0; n < 30; ++n) fly_lab_step();
+    memcpy(reference, fly_lab_activations(), sizeof(reference));
+    CHECK(fly_lab_reset_model(1, UINT32_MAX) == 1);
+    CHECK(fly_lab_set_sensors(15, 300, 300, 32767, 100, 1) == 1);
+    CHECK(fly_lab_event(1, 0) == 2);
+    CHECK(fly_lab_set_context(2, 0, 1) == 1);
+    CHECK(fly_lab_event(1, 2) == 2);
+    memcpy(expected_pixels, fly_lab_pixels(), sizeof(expected_pixels));
+    for (unsigned n = 0; n < 30; ++n) fly_lab_step();
+    CHECK(memcmp(reference, fly_lab_activations(), sizeof(reference)) == 0);
+    CHECK(memcmp(expected_pixels, fly_lab_pixels(), sizeof(expected_pixels)) == 0);
+    CHECK(fly_lab_pulse() == 2u && fly_lab_delivered_pulse() == 0u);
+    CHECK(fly_lab_set_context(1, 0, 1) == 1);
+    fly_lab_step();
+    CHECK(fly_lab_pulse() == 0u && fly_lab_delivered_pulse() == 2u);
+    CHECK(fly_lab_rendered() == 1u);
+    for (unsigned n = 60; n < 64; ++n) CHECK(fly_lab_activations()[n] == 0);
+    for (unsigned n = 0; n < fly_lab_pixel_count(); ++n) CHECK(fly_lab_pixels()[n] <= 5u);
+}
+
 int main(void) {
+    test_model_selection_and_stimulus();
+    test_circuit_ignores_watch_inputs_but_preserves_policy();
+    test_baseline_connectivity();
     test_reset_matches_portable_core();
     test_pulse_survives_native_and_usb_once();
     test_native_keys_and_whole_sequence();

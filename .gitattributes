@@ -1,1 +1,6 @@
 tools/garmin-firmware/stateless_home_diagnostic/* text eol=lf
+# Published source/data are byte-pinned evidence. Preserve original line endings
+# and upstream whitespace rather than silently normalizing their SHA256 inputs.
+flyos/sim/data/pisokas2020/* -text
+flyos/sim/data/pisokas2020/*.m -whitespace
+flyos/sim/data/pisokas2020/*.csv -whitespace

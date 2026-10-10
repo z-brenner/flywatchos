@@ -56,3 +56,17 @@ renderer, and host ownership policy into import-free WebAssembly. Run
 controls, motor-burst/movement/rest presets, synthetic sensors, pause/step,
 deterministic seed resets, and a bounded activity history. See
 [`tests/README.md`](tests/README.md) for reproducible compiler and Node tests.
+
+## Published circuit observatory
+
+The live lab also offers CX60: 60 representative populations and 326 directed
+connections from a pinned published fly heading model. A large schematic shows
+actual C activity, with keyboard-selectable units, incoming/outgoing pathway
+inspection and source strengths beside implemented Q10 coefficients. Synthetic
+landmark and P-EN A/B controls explore its simplified dynamics. The baseline
+Brain64, host policy and deterministic replays remain selectable.
+
+This is not an individual-neuron EM connectome or a whole fly brain. See
+[`sim/CX60.md`](sim/CX60.md) for source attribution, exact arithmetic, bounds,
+input conventions and the deliberately limited biological claims. Neither
+model is a new target candidate.

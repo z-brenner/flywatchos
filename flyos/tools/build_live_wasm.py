@@ -27,24 +27,34 @@ from pathlib import Path
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = (
-    "sim/live_bridge.c", "sim/host_policy.c", "fly/brain64.c",
+    "sim/live_bridge.c", "sim/host_policy.c", "sim/cx_circuit.c", "fly/brain64.c",
     "display/neural_specimen.c",
 )
 HEADERS = (
-    "sim/live_bridge.h", "sim/host_policy.h", "fly/brain64.h",
+    "sim/live_bridge.h", "sim/host_policy.h", "sim/cx_circuit.h", "sim/cx_connectivity.inc", "fly/brain64.h",
     "display/neural_specimen.h",
 )
 EXPORTS = (
     "reset", "event", "set_context", "set_sensors", "step", "pixels",
     "activations", "pixel_count", "neuron_count", "route", "held", "active",
     "owner", "pulse", "delivered_pulse", "buttons", "state", "epoch",
-    "view", "usb", "ready", "valid_mask", "rendered",
+    "view", "usb", "ready", "valid_mask", "rendered", "reset_model", "model",
+    "model_node_count", "set_stimulus", "stimulus_angle", "stimulus_strength",
+    "stimulus_turn", "readout_heading", "readout_strength", "edge_count",
+    "edge_source", "edge_target", "edge_raw_weight", "edge_denominator",
+    "edge_sign", "edge_weight_q",
 )
+PROVENANCE = ("sim/circuit_models.json", "sim/data/pisokas2020/pisokas2020_cx60_provenance.json",
+              "sim/data/pisokas2020/pisokas2020_cx60_edges.csv",
+              "sim/data/pisokas2020/pisokas2020_cx60_nodes.json",
+              "sim/data/pisokas2020/connectivity_matrix_drosophila_mine_case_5_9cols_labels1.mat",
+              "sim/data/pisokas2020/LICENSE")
 MEMORY_BYTES = 131072
 
 
@@ -139,6 +149,24 @@ assert.equal(api.fly_lab_epoch(), 1);
 assert.equal(api.fly_lab_view(), 1);
 assert.equal(api.fly_lab_rendered(), 1);
 assert([...new Uint8Array(api.memory.buffer, pixels, 57600)].every(n => n <= 5));
+assert.equal(api.fly_lab_reset_model(1, 123), 1);
+assert.equal(api.fly_lab_model_node_count(), 60);
+assert.equal(api.fly_lab_edge_count(), 326);
+assert.equal(api.fly_lab_edge_source(0), 34);
+assert.equal(api.fly_lab_edge_target(0), 0);
+assert.equal(api.fly_lab_edge_raw_weight(0), 99.9680554605268);
+assert.equal(api.fly_lab_edge_weight_q(0), 1024);
+assert.equal(api.fly_lab_set_stimulus(90, 1024, 0), 1);
+api.fly_lab_step();
+assert.equal(api.fly_lab_readout_heading(), 90);
+assert.equal(api.fly_lab_readout_strength(), 2048);
+assert.equal(api.fly_lab_pixels(), pixels);
+assert.equal(api.fly_lab_activations(), neurons);
+assert([...new Int16Array(api.memory.buffer, neurons, 64)].slice(60).every(n => n === 0));
+assert.equal(api.fly_lab_reset_model(2, 0), 0);
+assert.equal(api.fly_lab_model(), 1);
+api.fly_lab_reset(123);
+assert.equal(api.fly_lab_model(), 0);
 """
 
 
@@ -162,6 +190,8 @@ def build(output: Path, zig: str, node: str) -> dict:
     destination_identity(output)
     destination_identity(output.with_suffix(output.suffix + ".json"))
     output.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([sys.executable, str(ROOT / "tools/generate_cx_data.py"), "--check"],
+                   check=True, capture_output=True, text=True)
     environment = dict(os.environ)
     # Explicit caches keep the isolated compiler away from read-only home dirs.
     environment.setdefault("ZIG_GLOBAL_CACHE_DIR", str(output.parent / ".zig-cache-global"))
@@ -190,7 +220,7 @@ def build(output: Path, zig: str, node: str) -> dict:
             "module_bytes": len(data), "memory_bytes": MEMORY_BYTES, "imports": [],
             "sha256": hashlib.sha256(data).hexdigest(),
             "source_sha256": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest()
-                              for p in (*SOURCES, *HEADERS)},
+                              for p in (*SOURCES, *HEADERS, *PROVENANCE)},
             "exports": ["fly_lab_" + name for name in EXPORTS],
             "build_command": ["zig", *command[1:-1], "<output.wasm>"],
         }
