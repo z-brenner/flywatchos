@@ -239,3 +239,17 @@ profiles, coarse-peak ties, residual activity below the readout's integer
 resolution, exact silence and fixed-point recovery differences. The comparison
 is against the evolving same-time control, not an assumed equilibrium. This
 is an implementation assay, not independent fly data or biological validation.
+
+## Published rate-equation comparison
+
+The optional independent reference module is built with
+`tools/build_rate_reference_wasm.py`. Pass both `--wasm` and `--reference-wasm`
+to the lab builder to enable the **Rate reference** lens. Each module requires
+its own matching adjacent manifest. Without the reference module, the original
+live, paired-experiment, static-anatomy and replay lenses remain available.
+
+Reference and baseline comparisons use different model clocks, forcing scales
+and activity units. The source-equation core is noise-free, signed and driven
+by controlled direct current; it does not reproduce the source's full spike
+preprocessing pipeline. Read [RATE_REFERENCE.md](RATE_REFERENCE.md) for the
+equation, measured drift, numerical checks and exact limitations.

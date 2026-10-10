@@ -11,7 +11,7 @@ ctest --test-dir flyos/build --output-on-failure
 The host suite now includes the original model/renderer/persistence tests,
 input/redraw policy, bounded synthetic view classification, live bridge,
 standalone bundle checks, fail-closed WebAssembly-builder checks, CX60 dynamics
-and pinned topology/anatomy provenance checks (15 CTest targets). Some
+and pinned topology/anatomy provenance checks (19 CTest targets). Some
 fake-executable build-failure tests require POSIX/Node and report explicit skips
 when unavailable. No test here supplies proprietary firmware or accesses a watch.
 
@@ -134,3 +134,36 @@ and one-command aggregate runner used by GitHub Actions. SciPy re-extraction
 is mandatory there, and missing private firmware/platform checks remain
 explicit skips. The runner refuses known private-input locations and does not
 build, package, stage or flash firmware.
+
+## Independent source-equation reference
+
+The separate reference module preserves signed tanh rate dynamics at the source
+0.1 ms Euler timestep, with explicitly omitted noise and controlled direct
+current input. It does not replace the original module or measured anatomy.
+
+```sh
+python flyos/tools/generate_rate_reference.py --check
+python flyos/tests/generate_rate_reference_oracle.py --check
+python flyos/tests/test_rate_reference_convergence.py
+python flyos/tools/build_rate_reference_wasm.py --output flyos/build/flyos-rate-reference.wasm
+python flyos/tests/test_rate_reference_oracle.py flyos/build/flyos-rate-reference-trace
+node flyos/tests/test_rate_reference_wasm.cjs flyos/build/flyos-rate-reference.wasm flyos/build/flyos-rate-reference-trace
+node flyos/tests/test_rate_reference_protocol.cjs flyos/build/flyos-rate-reference.wasm
+python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interaction-exporter --wasm flyos/build/flyos-live.wasm --reference-wasm flyos/build/flyos-rate-reference.wasm --output flyos/build/reference-lab
+node flyos/tests/test_interaction_lab_reference.cjs ci/node_modules/jsdom
+node flyos/tests/test_reference_bundle.cjs flyos/build/reference-lab/index.html ci/node_modules/jsdom
+```
+
+The complete CI runner performs these checks with mandatory NumPy/SciPy. The
+independent oracle reads the original MAT and integrates the SI-voltage form,
+not the production generated table. Timestep refinement checks all 60 states
+at 801 common samples, including cue-loss transients. Native/Wasm comparison
+uses a declared floating-point tolerance; original baseline comparisons remain
+bit-exact. Builder tests reject missing/stale/malformed source identities and
+exercise compile, validator and paired-install failures.
+
+Protocol and real-bundle tests verify signed/ambiguous readouts, all-snapshot
+command replay, deterministic repeats, cancellation, independent memories,
+phase/input mapping, missing/delayed/rejected reference engines, immutable
+exports and navigation races. SVG/data checks are not browser layout QA.
+See [`../sim/RATE_REFERENCE.md`](../sim/RATE_REFERENCE.md).

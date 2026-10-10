@@ -27,6 +27,16 @@
 
 ---
 
+## Source-equation comparison lab
+
+The offline lab now includes a separate deterministic reference for the
+published signed tanh rate equation, alongside unchanged fixed-point CX60.
+Compare cue loss, shifts and P-EN drive with independent time/activity axes,
+signed activity maps, explicit directional drift and reproducible exports.
+Noise and the source spike-input preprocessing are deliberately omitted.
+See [the reference contract](flyos/sim/RATE_REFERENCE.md) for equations,
+provenance, numerical checks and limits. This does not change any target gate.
+
 ## What is this?
 
 FlyWatch is an attempt to turn a Garmin Forerunner 245 into a strange little

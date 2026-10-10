@@ -47,6 +47,7 @@ def main() -> None:
     build_parent.mkdir(exist_ok=True)
     build = Path(tempfile.mkdtemp(prefix='offline-ci-', dir=build_parent))
     wasm = str(build / 'flyos-live.wasm')
+    reference_wasm = str(build / 'flyos-rate-reference.wasm')
     bundle = str(build / 'live-lab')
     commands = [
         [python, '-B', '-m', 'unittest', 'discover', '-s', 'ci', '-v'],
@@ -59,13 +60,23 @@ def main() -> None:
         [python, '-B', 'flyos/tools/build_live_wasm.py', '--output', wasm],
         ['node', 'flyos/tests/test_live_wasm.cjs', wasm, str(build / 'flyos-live-bridge-trace')],
         ['node', 'flyos/tests/test_experiment_protocol.cjs', wasm],
+        [python, '-B', 'flyos/tools/generate_rate_reference.py', '--check'],
+        [python, '-B', 'flyos/tests/generate_rate_reference_oracle.py', '--check'],
+        [python, '-B', 'flyos/tests/test_rate_reference_convergence.py'],
+        [python, '-B', 'flyos/tools/build_rate_reference_wasm.py', '--output', reference_wasm],
+        ['node', 'flyos/tests/test_rate_reference_wasm.cjs', reference_wasm,
+         str(build / 'flyos-rate-reference-trace')],
+        ['node', 'flyos/tests/test_rate_reference_protocol.cjs', reference_wasm],
         [python, '-B', 'flyos/tools/build_interaction_lab.py', '--exporter',
-         str(build / 'flyos-interaction-exporter'), '--wasm', wasm, '--output', bundle],
+         str(build / 'flyos-interaction-exporter'), '--wasm', wasm,
+         '--reference-wasm', reference_wasm, '--output', bundle],
         ['node', 'flyos/tests/test_interaction_lab_ui.cjs', str(Path(bundle) / 'index.html'), jsdom],
         ['node', 'flyos/tests/test_interaction_lab_circuit.cjs', jsdom],
         ['node', 'flyos/tests/test_interaction_lab_anatomy.cjs', jsdom],
         ['node', 'flyos/tests/test_interaction_lab_experiments.cjs', jsdom],
+        ['node', 'flyos/tests/test_interaction_lab_reference.cjs', jsdom],
         ['node', 'flyos/tests/test_experiment_bundle.cjs', str(Path(bundle) / 'index.html'), jsdom],
+        ['node', 'flyos/tests/test_reference_bundle.cjs', str(Path(bundle) / 'index.html'), jsdom],
         [python, '-B', '-m', 'unittest', 'discover', '-s', 'tools/garmin-firmware/tests', '-v'],
     ]
     run_commands(commands, ROOT)
