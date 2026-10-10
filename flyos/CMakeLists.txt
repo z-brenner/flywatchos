@@ -92,3 +92,22 @@ add_executable(flyos-brain-ascii-tests
 target_include_directories(flyos-brain-ascii-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 flyos_strict_warnings(flyos-brain-ascii-tests)
 add_test(NAME flyos-brain-ascii-tests COMMAND flyos-brain-ascii-tests)
+
+# Host-only executable specifications. Never linked into a watch target.
+add_library(flyos_sim_policy sim/host_policy.c)
+target_include_directories(flyos_sim_policy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+flyos_strict_warnings(flyos_sim_policy)
+
+add_executable(flyos-host-policy-tests tests/test_host_policy.c)
+target_link_libraries(flyos-host-policy-tests PRIVATE flyos_sim_policy)
+flyos_strict_warnings(flyos-host-policy-tests)
+add_test(NAME flyos-host-policy-tests COMMAND flyos-host-policy-tests)
+
+add_executable(flyos-interaction-exporter
+    sim/export_interaction_trace.c display/neural_specimen.c fly/brain64.c)
+target_compile_definitions(flyos-interaction-exporter PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
+target_link_libraries(flyos-interaction-exporter PRIVATE flyos_sim_policy)
+flyos_strict_warnings(flyos-interaction-exporter)
+add_test(NAME flyos-interaction-lab-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interaction_lab.py
+        $<TARGET_FILE:flyos-interaction-exporter>)

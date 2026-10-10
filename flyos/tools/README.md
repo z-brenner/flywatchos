@@ -10,3 +10,9 @@ an image library:
 ```powershell
 python flyos/tools/ppm_to_png.py flyos-screen.ppm flyos-screen.png
 ```
+
+`build_interaction_lab.py` invokes the host-only `flyos-interaction-exporter`
+and bundles its real C neural/framebuffer traces into a standalone HTML lab.
+See [`flyos/README.md`](../README.md#interactive-replay-lab). Native screens,
+queue outcomes, view classifications, and display acknowledgments are fixture
+inputs; the artifact cannot validate Garmin callbacks, RAM, or live timing.

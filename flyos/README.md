@@ -28,3 +28,22 @@ The FR245 overlay targets require local, byte-pinned Garmin firmware evidence
 and an ARM toolchain. Those proprietary inputs and all generated update packages
 are intentionally excluded from this repository. The live N64 result is still
 an overlay inside GarminOS; it is not a standalone FlyOS boot.
+
+## Interactive replay lab
+
+```sh
+python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interaction-exporter --output flyos/build/interaction-lab
+```
+
+Run from the repository root after the build. On Windows, select the `.exe`
+path emitted by your generator (possibly under `Debug/`). Open the generated
+`index.html`; it contains all scripts, images, and scenario data and needs no
+server or network. The output directory must not already exist. `trace.json`
+and `SHA256SUMS` accompany the page for reproducibility.
+
+Seven scripted scenarios expose actual C-rendered neural frames, per-neuron
+telemetry, key ownership, short-tap pulses, and abstract detach redraw state.
+The page provides play/pause, speed, frame stepping/scrubbing, a neuron
+inspector, and per-scenario export. It starts paused and pauses when hidden.
+The host policy lives in `sim/` and is never linked into a watch target.
+Read [the model contract](sim/README.md) before interpreting its results.
