@@ -191,6 +191,16 @@ motor bursts, synthetic watch sensors and deterministic seeds. Nine policy
 replays remain available. Every activation and framebuffer pixel comes from C;
 the page needs no server or network.
 
+The **Measured anatomy** lens adds a separate static view of 56 identified
+hemibrain cells: 46 EPG and 10 ER4m. Inspect 762 supplied directed cross-class
+pairs containing 16,774 ellipsoid-body synapses, search exact body IDs, compare
+reciprocal counts, and filter or export the supplied projection. These are
+measured counts from the [Hulse et al. analysis (eLife 2021)](https://doi.org/10.7554/eLife.66039),
+with CC BY 4.0 attribution. The ring arrangement is a schematic. Counts do not
+specify neural signs or efficacy, and unprovided pairs are not evidence of
+absence. This fragment has no simulated activity and is not a whole brain.
+See [data provenance and limitations](flyos/sim/data/hulse2021/README.md).
+
 After the host build, generate a replay-only bundle:
 
 ```sh
@@ -229,6 +239,13 @@ firmware candidate, proof of hardware safety, or solution to the live USB delay.
 See [host policy semantics](flyos/sim/README.md) and
 [public versus private test coverage](tools/garmin-firmware/tests/README.md).
 
+The [public offline workflow](.github/workflows/offline-checks.yml) runs the
+same [pinned aggregate checks](ci/README.md) on GitHub: C tests, source-data
+integrity, native/Wasm parity, DOM state checks and public firmware-tool tests.
+It has read-only repository permissions and does not acquire private evidence
+or build firmware. Actual browser layout and device interaction still require
+separate validation.
+
 ## Evolution log
 
 - [x] Inventory the FR245 USB and firmware surface
@@ -245,6 +262,8 @@ See [host policy semantics](flyos/sim/README.md) and
 - [x] Run the real C network interactively in an offline WebAssembly sandbox
 - [x] Exercise bounded synthetic view snapshots and their ABA limitation
 - [x] Add published CX60 topology, inspectable connections and a circuit observatory
+- [x] Inspect measured ER4m↔EPG body IDs and directed EB synapse counts
+- [x] Add pinned public-only checks with read-only GitHub Actions permissions
 - [ ] Prove target storage ownership and safe redraw context
 - [ ] Verify complete sequence ownership on hardware
 - [ ] Bind safe heart-rate, motion, and charging observations

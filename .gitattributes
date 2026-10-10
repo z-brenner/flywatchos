@@ -4,3 +4,7 @@ tools/garmin-firmware/stateless_home_diagnostic/* text eol=lf
 flyos/sim/data/pisokas2020/* -text
 flyos/sim/data/pisokas2020/*.m -whitespace
 flyos/sim/data/pisokas2020/*.csv -whitespace
+# Hulse raw CSVs are stored losslessly; the derived edge fixture retains CRLF.
+flyos/sim/data/hulse2021/*.gz -text
+flyos/sim/data/hulse2021/*.csv -text -whitespace
+flyos/sim/data/hulse2021/*.json text eol=lf

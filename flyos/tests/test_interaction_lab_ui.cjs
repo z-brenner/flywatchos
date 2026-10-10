@@ -5,8 +5,15 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const {JSDOM, VirtualConsole, ResourceLoader} = require(process.argv[3] ? path.resolve(process.argv[3]) : 'jsdom');
 class NoNetwork extends ResourceLoader { fetch(url) { throw new Error('unexpected resource: '+url); } }
+async function waitUntil(predicate, message, timeoutMs=10000) {
+  const deadline=Date.now()+timeoutMs;
+  while(!predicate()) {
+    if(Date.now()>=deadline) throw new Error(message);
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+}
 (async()=>{
-  const errors=[],timers=new Map();let timerId=0,exportedBlob=null;
+  const errors=[],timers=new Map();let timerId=0,exportedBlob=null,exportedName=null;
   const virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',e=>errors.push(e.message));
   const dom=new JSDOM(fs.readFileSync(process.argv[2],'utf8'),{
     runScripts:'dangerously',pretendToBeVisual:true,resources:new NoNetwork(),virtualConsole,
@@ -18,14 +25,14 @@ class NoNetwork extends ResourceLoader { fetch(url) { throw new Error('unexpecte
       w.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/png;base64,AA==';
       w.HTMLElement.prototype.setPointerCapture=()=>{};
       w.URL.createObjectURL=blob=>{exportedBlob=blob;return 'blob:unit-test';};w.URL.revokeObjectURL=()=>{};
-      w.HTMLAnchorElement.prototype.click=function(){assert.equal(this.download,'flywatch-live-specimen.json');};
+      w.HTMLAnchorElement.prototype.click=function(){exportedName=this.download;};
     }
   });
   const w=dom.window,d=w.document,$=id=>d.getElementById(id),ev=code=>w.eval(code);
   const click=id=>$(id).click();const input=id=>$(id).dispatchEvent(new w.Event('input',{bubbles:true}));
   const change=id=>$(id).dispatchEvent(new w.Event('change',{bubbles:true}));
   const press=(key,event='pointerdown')=>d.querySelector(`[data-key="${key}"]`).dispatchEvent(new w.MouseEvent(event,{button:0,bubbles:true,cancelable:true}));
-  for(let i=0;i<50&&$('live-mode').disabled;i++)await new Promise(resolve=>setImmediate(resolve));
+  await waitUntil(()=>!$('live-mode').disabled,'live engine did not initialize: '+$('live-status').textContent);
   assert.equal($('live-mode').disabled,false,$('live-status').textContent);
   assert.equal(d.querySelectorAll('.scenario').length,9);
   assert.equal(ev('liveMode'),true,'bundled live engine opens the sandbox, paused');
@@ -97,6 +104,7 @@ class NoNetwork extends ResourceLoader { fetch(url) { throw new Error('unexpecte
   assert.equal(ev('frameIndex'),0);assert.equal(ev('labEngine.fly_lab_epoch()'),epoch);
   // The actual export button includes a complete command log even after trimming.
   click('export');assert.ok(exportedBlob);
+  assert.equal(exportedName,'flywatch-live-specimen.json');
   const exported=JSON.parse(await new Promise((resolve,reject)=>{
     const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsText(exportedBlob);
   }));
@@ -169,7 +177,89 @@ class NoNetwork extends ResourceLoader { fetch(url) { throw new Error('unexpecte
   assert.equal($('circuit-stimulus-controls').hidden,true);
   assert.equal(d.querySelector('.sensor-options').hidden,false);
   assert.equal(ev('circuitMetadata(live.frames[0]).edges.length'),90);
+  // Actual measured data is a static lens. Entry releases a held C control,
+  // stops playback, hides activity and preserves the engine during inspection.
+  press(1);click('play');assert.equal(timers.size,1);
+  click('anatomy-mode');
+  assert.equal(ev('anatomyMode'),true);assert.equal(ev('liveMode'),false);
+  assert.equal(ev('labEngine.fly_lab_held()'),0);assert.equal(timers.size,0);
+  assert.equal($('anatomy-lens').hidden,false);
+  for(const selector of ['.workspace','.playback','.below','#live-controls'])
+    assert.equal(d.querySelector(selector).hidden,true,selector);
+  assert.equal(d.querySelectorAll('[data-anatomy-node]').length,56);
+  assert.match($('anatomy-dataset-totals').textContent,/56.*762.*16,774/s);
+  assert.equal(ev('data.anatomy.nodes.every(n=>typeof n.body_id==="string")'),true);
+  const anatomyEpoch=ev('labEngine.fly_lab_epoch()');
+  const anatomyNeurons=ev('Array.from(new Int16Array(labEngine.memory.buffer,labEngine.fly_lab_activations(),64)).join(",")');
+  $('anatomy-draw').value='all';change('anatomy-draw');
+  assert.equal(d.querySelectorAll('[data-anatomy-link]').length,762);
+  $('anatomy-threshold').value='20';input('anatomy-threshold');
+  const retained=JSON.parse(ev('JSON.stringify(data.anatomy.links.filter(e=>e.count>=20))'));
+  assert.equal(d.querySelectorAll('[data-anatomy-link]').length,retained.length);
+  const bigId=ev('data.anatomy.nodes.find(n=>Number(n.body_id)>4294967295).body_id');
+  $('anatomy-search').value=bigId;input('anatomy-search');
+  assert.equal(d.querySelectorAll('#anatomy-search-results button').length,1);
+  d.querySelector('#anatomy-search-results button').click();
+  assert.equal($('anatomy-cell-id').textContent,bigId);
+  const selectedCell=d.querySelector('[data-anatomy-node][tabindex="0"]');
+  selectedCell.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+  for(const args of [{key:'ArrowRight'},{key:'Home'},{key:'End'},{key:' ',code:'Space'}])
+    d.body.dispatchEvent(new w.KeyboardEvent('keydown',{...args,bubbles:true,cancelable:true}));
+  click('anatomy-mode'); // repeated entry is idempotent
+  assert.equal(ev('labEngine.fly_lab_epoch()'),anatomyEpoch);
+  assert.equal(ev('Array.from(new Int16Array(labEngine.memory.buffer,labEngine.fly_lab_activations(),64)).join(",")'),anatomyNeurons);
+  assert.equal(timers.size,0);
+  click('anatomy-export');assert.equal(exportedName,'flywatch-measured-anatomy-visible.json');
+  const anatomyExport=JSON.parse(await new Promise((resolve,reject)=>{
+    const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsText(exportedBlob);
+  }));
+  assert.equal(anatomyExport.scope,'static-measured-anatomy');
+  assert.equal(anatomyExport.nodes.length,56);
+  assert.deepEqual(anatomyExport.links,retained);
+  assert.equal(anatomyExport.full_supplied_totals.synapse_count_sum,16774);
+  assert.equal(anatomyExport.visible_totals.synapse_count_sum,retained.reduce((n,e)=>n+e.count,0));
+  assert.equal(anatomyExport.metadata.license.id,'CC-BY-4.0');
+  assert.equal(anatomyExport.frames,undefined);assert.equal(anatomyExport.scenario,undefined);
+  assert.equal(ev('labEngine.fly_lab_epoch()'),anatomyEpoch);
+  d.querySelector('.scenario').click();
+  assert.equal(ev('anatomyMode'),false);assert.equal(ev('liveMode'),false);
+  assert.equal($('anatomy-lens').hidden,true);assert.equal(d.querySelector('.workspace').hidden,false);
+  click('anatomy-mode');click('live-mode');
+  assert.equal(ev('anatomyMode'),false);assert.equal(ev('liveMode'),true);
+  assert.equal($('live-controls').hidden,false);assert.equal($('anatomy-lens').hidden,true);
+  assert.equal(ev('labEngine.fly_lab_held()'),0);
   assert.equal(timers.size,0);assert.deepEqual(errors,[]);
-  console.log('PASS: real-Wasm DOM controls, bursts, sensors, chord focus, cancellation, modal pulses, timers, mode switch, blur, deterministic reset, validation, bounded history, scrubbing, exact exported-command replay. Canvas is stubbed; browser layout unverified.');
   w.close();
+  // Source-only anatomy remains useful without Wasm. A late real-Wasm load
+  // must not take the user away from an anatomy lens already selected.
+  for(const delayed of [false,true]){
+    const variantErrors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>variantErrors.push(e.message));
+    let release;
+    const barrier=new Promise(resolve=>{release=resolve;});
+    const variant=new JSDOM(fs.readFileSync(process.argv[2],'utf8'),{
+      runScripts:'dangerously',pretendToBeVisual:true,resources:new NoNetwork(),virtualConsole:vc,
+      beforeParse(v){
+        v.matchMedia=()=>({matches:false});
+        v.WebAssembly=delayed?{Memory:WebAssembly.Memory,instantiate:async(...args)=>{await barrier;return WebAssembly.instantiate(...args);}}:undefined;
+        v.HTMLCanvasElement.prototype.getContext=()=>({createImageData:()=>({data:new Uint8ClampedArray(240*240*4)}),putImageData:()=>{}});
+        v.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/png;base64,AA==';
+      }
+    });
+    const v=variant.window,vd=v.document;
+    assert.equal(vd.getElementById('anatomy-mode').disabled,false);
+    vd.getElementById('anatomy-mode').click();
+    assert.equal(v.eval('anatomyMode'),true);
+    assert.equal(v.eval('liveMode'),false);
+    release();
+    if(delayed) await waitUntil(()=>!vd.getElementById('live-mode').disabled,'delayed live engine did not initialize');
+    assert.equal(vd.getElementById('live-mode').disabled,!delayed);
+    assert.equal(v.eval('anatomyMode'),true,'async initialization preserves deliberate anatomy selection');
+    assert.equal(v.eval('liveMode'),false);
+    assert.equal(vd.querySelectorAll('[data-anatomy-node]').length,56);
+    vd.querySelector('.scenario').click();
+    assert.equal(v.eval('anatomyMode'),false);assert.equal(vd.querySelector('.workspace').hidden,false);
+    if(delayed){vd.getElementById('live-mode').click();assert.equal(v.eval('liveMode'),true);}
+    assert.deepEqual(variantErrors,[]);v.close();
+  }
+  console.log('PASS: real-Wasm controls, interruption, timers, both models, exact command replay, measured-data totals/export, anatomy isolation, repeated mode changes, no-Wasm fallback and late-engine selection. Canvas is stubbed; browser layout unverified.');
 })().catch(error=>{console.error(error);process.exit(1);});

@@ -265,6 +265,7 @@ function liveUpdateModelControls(metadata) {
 }
 function enterLive() {
   if (!labEngine || liveMode) return;
+  leaveAnatomy();
   pause(); liveMode = true; pause();
   $('live-controls').hidden = false;
   $('mode-badge').textContent='LIVE C / OFFLINE';
@@ -388,7 +389,7 @@ async function initializeLive() {
     liveReadTopology();
     $('live-mode').disabled=false;
     $('live-status').textContent='Ready. Real C → WebAssembly. No server.';
-    enterLive();
+    if (!anatomyMode) enterLive();
   } catch(error) {
     $('live-status').textContent='Live engine unavailable. Replays still work.';
     $('live-status').title=error.message;

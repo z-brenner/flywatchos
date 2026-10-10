@@ -20,6 +20,44 @@ builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 
 class InteractionLabTests(unittest.TestCase):
+    def test_anatomy_metadata_rejects_ambiguous_or_false_counts(self):
+        nodes = [dict(body_id='1001', **{'class': 'EPG'}, instance='EPG_a'),
+                 dict(body_id='1002', **{'class': 'ER4m'}, instance='ER4m_a')]
+        metadata = dict(id='test-fragment', title='Measured projection', dataset='hemibrain', roi='EB',
+                        node_count=2, edge_count=1, synapse_count_sum=3,
+                        class_counts={'EPG': 1, 'ER4m': 1},
+                        directions=[dict(source_class='EPG', target_class='ER4m',
+                                         edge_count=1, synapse_count_sum=3)],
+                        source=dict(paper='https://example.org/paper', hemibrain_paper='https://example.org/data',
+                                    repository='https://github.com/example/data', commit='a' * 40,
+                                    paths=['raw.csv']),
+                        license=dict(id='CC-BY-4.0', url='https://creativecommons.org/licenses/by/4.0/',
+                                     attribution='Data authors', changes='Class-pair extraction'),
+                        boundary='Cross-class projection fragment', limitations=['Not a complete subgraph.'])
+        dataset = dict(schema_version=1, metadata=metadata, nodes=nodes,
+                       links=[dict(source=0, target=1, count=3)])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'anatomy.json'
+            def check(value):
+                path.write_text(json.dumps(value))
+                return builder.load_anatomy_data(path)
+            self.assertEqual(check(dataset), dataset)
+            invalid = [
+                {**dataset, 'links': [dict(source=0, target=1, count=True)]},
+                {**dataset, 'links': [dict(source=0, target=2, count=3)]},
+                {**dataset, 'links': dataset['links'] * 2},
+                {**dataset, 'nodes': [nodes[0], {**nodes[1], 'body_id': '1001'}]},
+                {**dataset, 'nodes': [nodes[0], {**nodes[1], 'body_id': 1002}]},
+                {**dataset, 'nodes': [nodes[0], {**nodes[1], 'class': 'EPG'}]},
+                {**dataset, 'metadata': {**metadata, 'synapse_count_sum': 4}},
+                {**dataset, 'metadata': {**metadata, 'node_count': 3}},
+                {**dataset, 'metadata': {**metadata, 'source': {**metadata['source'], 'paper': 'javascript:bad()'}}},
+                {**dataset, 'metadata': {**metadata, 'directions': []}},
+            ]
+            for value in invalid:
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    check(value)
+
     def test_model_metadata_rejects_unsafe_or_ambiguous_schema(self):
         model = dict(id=0, key='baseline', label='Abstract baseline',
                      description='A hand-authored model.', biological_basis='None.',

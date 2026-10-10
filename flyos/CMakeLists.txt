@@ -145,3 +145,5 @@ flyos_strict_warnings(flyos-cx-circuit-tests)
 add_test(NAME flyos-cx-circuit-tests COMMAND flyos-cx-circuit-tests)
 add_test(NAME flyos-cx-provenance-tests
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cx_provenance.py)
+add_test(NAME flyos-hulse-provenance-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hulse_provenance.py)

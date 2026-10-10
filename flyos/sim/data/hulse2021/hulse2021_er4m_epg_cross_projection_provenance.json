@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "id": "hulse2021-er4m-epg-eb",
+    "title": "Measured anatomy: ER4m / EPG EB projections",
+    "dataset": "Hemibrain v1.1; Hulse et al. (2021) saved EB projection tables",
+    "roi": "EB",
+    "node_count": 56,
+    "edge_count": 762,
+    "synapse_count_sum": 16774,
+    "class_counts": {
+      "EPG": 46,
+      "ER4m": 10
+    },
+    "directions": [
+      {
+        "source_class": "ER4m",
+        "target_class": "EPG",
+        "edge_count": 460,
+        "synapse_count_sum": 14903
+      },
+      {
+        "source_class": "EPG",
+        "target_class": "ER4m",
+        "edge_count": 302,
+        "synapse_count_sum": 1871
+      }
+    ],
+    "source": {
+      "paper": "https://doi.org/10.7554/eLife.66039",
+      "hemibrain_paper": "https://doi.org/10.7554/eLife.57443",
+      "repository": "https://github.com/jayaraman-lab/CX-connectome-analysis",
+      "commit": "5c7a57256c15ea763e4cf0a7cf686ba0d3342d80",
+      "paths": [
+        "EBFigures/modularityAnalysis/er2epg.csv",
+        "EBFigures/modularityAnalysis/epg2erEB.csv"
+      ]
+    },
+    "license": {
+      "id": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "source": "https://www.janelia.org/project-team/flyem/hemibrain",
+      "attribution": "Hemibrain data: Scheffer et al. (2020), A connectome and analysis of the adult Drosophila central brain, eLife 9:e57443. Central-complex analysis and saved tables: Hulse et al. (2021), A connectome of the Drosophila central complex reveals network motifs suitable for flexible navigation and context-dependent action selection, eLife 10:e66039. HHMI/Janelia FlyEM and the original research teams. No endorsement is implied.",
+      "changes": "FlyWatchOS selected every positive ER4m/EPG cross-class row in EB, preserved body IDs, instance names, direction and ROIweight counts, sorted by numeric body ID, and reindexed endpoints for display. Original CSV bytes are preserved in gzip files; no biological weights were fitted, normalized or assigned a sign.",
+      "repository_code_license": "No standalone analysis-repository code license was identified at the pinned commit. No upstream analysis code is copied or required; CC BY 4.0 here describes the underlying hemibrain data, not a code license."
+    },
+    "boundary": "A cross-class projection fragment from two saved tables; not a complete induced subgraph, heading circuit or whole brain.",
+    "limitations": [
+      "Within-class and external connections are omitted by these input tables.",
+      "A missing row is not evidence of a zero-synapse biological connection; no missing edges are filled with zero.",
+      "Counts are unsigned EB ROIweight synapse counts, not measured electrical efficacy or synaptic sign.",
+      "Body IDs and instance labels identify source annotations; layout is schematic, not measured geometry or EPG heading angles.",
+      "This static anatomical lens supplies no activation, dynamics, sensory tuning, learning or behavior model.",
+      "The two saved exports do not by themselves establish completeness or an exhaustive live neuPrint query."
+    ]
+  },
+  "extraction": {
+    "implementation": "flyos/tools/generate_hulse_data.py; independently written Python standard library",
+    "selection": "Every row with databaseType.from/to equal to ER4m/EPG in either direction; roi must be EB; ROIweight must be a positive integer.",
+    "orientation": "source = from (presynaptic); target = to (postsynaptic); count = ROIweight; no transposition, aggregation or normalization.",
+    "absence": "Missing pairs remain absent; no claim that omitted pairs are biological zeroes.",
+    "ordering": "Nodes sorted by numeric body ID; directed edges sorted by source then target numeric body ID; body IDs remain strings.",
+    "validation": "Raw bytes, SHA256 and Git blob SHA1; exact columns; unique directed pairs; consistent endpoint annotations; fixed totals; independently vetted node/edge fixture SHA256."
+  },
+  "evidence": {
+    "checked_on": "2026-10-10",
+    "source_tree": "https://api.github.com/repos/jayaraman-lab/CX-connectome-analysis/git/trees/5c7a57256c15ea763e4cf0a7cf686ba0d3342d80?recursive=1",
+    "source_tree_entries": 146,
+    "source_tree_truncated": false,
+    "repository_license_file_found": false,
+    "dataset_version": "https://github.com/jayaraman-lab/CX-connectome-analysis/blob/5c7a57256c15ea763e4cf0a7cf686ba0d3342d80/README.md",
+    "orientation_and_count_semantics": "https://github.com/jayaraman-lab/CX-connectome-analysis/blob/5c7a57256c15ea763e4cf0a7cf686ba0d3342d80/EBFigures/modularityAnalysis/computeModularity.m",
+    "code_note": "Evidence was inspected only. No upstream analysis code is distributed in this data bundle."
+  },
+  "sources": {
+    "hulse_er2epg.csv": {
+      "path": "EBFigures/modularityAnalysis/er2epg.csv",
+      "bytes": 2067645,
+      "sha256": "ceaeafa61d4aa9a3e72dce5679b00abdcdb326d489cb8dec2a7378ac2a256543",
+      "git_blob_sha1": "22e86f62486c3956ebdf8d6e769dce65194bffb2",
+      "raw_row_count": 8755,
+      "source_class": "ER4m",
+      "target_class": "EPG",
+      "selected_row_count": 460,
+      "selected_synapse_count": 14903,
+      "storage": {
+        "file": "hulse_er2epg.csv.gz",
+        "compression": "gzip",
+        "bytes": 251295,
+        "sha256": "290ffa41dc205d3cf160d4ee9b00975ecc4aea9faae6044ec1306d06bfae3b2e"
+      },
+      "url": "https://github.com/jayaraman-lab/CX-connectome-analysis/blob/5c7a57256c15ea763e4cf0a7cf686ba0d3342d80/EBFigures/modularityAnalysis/er2epg.csv"
+    },
+    "hulse_epg2erEB.csv": {
+      "path": "EBFigures/modularityAnalysis/epg2erEB.csv",
+      "bytes": 145689,
+      "sha256": "61f641d9609acffd087bc1f3ec02e1ccc78154e5dedf9eab7219b428a731a8b0",
+      "git_blob_sha1": "1276bc47ad02bd05eca07575c0d591b329737d62",
+      "raw_row_count": 621,
+      "source_class": "EPG",
+      "target_class": "ER4m",
+      "selected_row_count": 302,
+      "selected_synapse_count": 1871,
+      "storage": {
+        "file": "hulse_epg2erEB.csv.gz",
+        "compression": "gzip",
+        "bytes": 23281,
+        "sha256": "f7036fa13a23a45bb9e4eae8b71d6faa692b4fff15cb8901d74a761cb1c14cad"
+      },
+      "url": "https://github.com/jayaraman-lab/CX-connectome-analysis/blob/5c7a57256c15ea763e4cf0a7cf686ba0d3342d80/EBFigures/modularityAnalysis/epg2erEB.csv"
+    }
+  },
+  "artifacts": {
+    "hulse2021_er4m_epg_anatomy.json": {
+      "bytes": 62362,
+      "sha256": "302a8c2d17be835c66adddea52c12f4e7cd48815bc577e8d379755fc439981b9"
+    },
+    "hulse2021_er4m_epg_cross_projection_nodes.json": {
+      "bytes": 4971,
+      "sha256": "b1aa80dd687dafd32dee7f49c59c62912043914c5a1acf03047c8920ce16c385"
+    },
+    "hulse2021_er4m_epg_cross_projection_edges.csv": {
+      "bytes": 35010,
+      "sha256": "7bb751716d2e43b1f60970f096dcc1d69462014780a136ec803824bbfef09ed8"
+    }
+  }
+}
