@@ -1,12 +1,15 @@
 import copy
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+from private_fixtures import require_private_files
 
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
@@ -21,6 +24,7 @@ class NeuralSpecimenN64VersionStrategyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.decision_path = ROOT / strategy.DECISION_RELATIVE_PATH
+        require_private_files(cls.decision_path, ROOT / "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD")
         cls.decision = json.loads(cls.decision_path.read_text(encoding="utf-8"))
         cls.official = (ROOT / cls.decision["inputs"]["official_gcd"]["path"]).read_bytes()
         cls.hook = (ROOT / cls.decision["target_segments"]["hook"]["path"]).read_bytes()
@@ -34,14 +38,6 @@ class NeuralSpecimenN64VersionStrategyTests(unittest.TestCase):
         if len(items) != 1:
             raise AssertionError(f"expected one stream 0x{record_id:04x}")
         return items[0]
-
-    def test_exact_monotonic_version_chain_and_names(self):
-        self.assertEqual((strategy.OFFICIAL_VERSION, strategy.PRIOR_OVERLAY_VERSION), (1370, 1373))
-        self.assertEqual((strategy.CANDIDATE_VERSION, strategy.RESTORE_VERSION), (1374, 1375))
-        self.assertEqual(strategy.CANDIDATE_VERSION, strategy.PRIOR_OVERLAY_VERSION + 1)
-        self.assertEqual(strategy.RESTORE_VERSION, strategy.CANDIDATE_VERSION + 1)
-        self.assertEqual(strategy.CANDIDATE_FILENAME, "Forerunner245_1374-flyos-neural-specimen-n64.gcd.analysis-only.DO_NOT_INSTALL")
-        self.assertEqual(strategy.RESTORE_FILENAME, "Forerunner245_1375-official-payload-restore-n64.gcd.analysis-only.DO_NOT_INSTALL")
 
     def test_decision_pins_all_inputs_reviews_and_prior_live_chain(self):
         validated = strategy.load_and_validate_decision(ROOT, self.decision_path)
@@ -162,6 +158,42 @@ class NeuralSpecimenN64VersionStrategyTests(unittest.TestCase):
             with self.assertRaises((KeyError, ValueError)):
                 strategy.validate_decision_document(decision)
 
+    def test_construction_consumes_each_validated_binary_snapshot_once(self):
+        tracked = {
+            (ROOT / self.decision["inputs"]["official_gcd"]["path"]).resolve(),
+            (ROOT / self.decision["target_segments"]["hook"]["path"]).resolve(),
+            (ROOT / self.decision["target_segments"]["primary"]["path"]).resolve(),
+            (ROOT / self.decision["target_segments"]["secondary"]["path"]).resolve(),
+        }
+        original = Path.read_bytes
+        counts = {path: 0 for path in tracked}
+
+        def mutate_on_reopen(path):
+            resolved = path.resolve()
+            data = original(path)
+            if resolved in counts:
+                counts[resolved] += 1
+                if counts[resolved] > 1:
+                    return bytes([data[0] ^ 1]) + data[1:]
+            return data
+
+        with mock.patch.object(Path, "read_bytes", mutate_on_reopen):
+            candidate, restore, report = strategy.construct_pair(ROOT, self.decision_path)
+        self.assertEqual(set(counts.values()), {1})
+        self.assertEqual(strategy.sha256(candidate), "3a4a4af6355c132571c1158667cc43c96bf5da7a67737ab028267930e71134cd")
+        self.assertEqual(strategy.sha256(restore), "ccd2a29c51a41a436111239c7181e1cb0cea1f2fac1c48d600fff6dec103e5da")
+        self.assertEqual(report["validated_inputs"]["inputs.official_gcd"]["sha256"], strategy.sha256(self.official))
+
+
+class NeuralSpecimenN64PublicSafetyTests(unittest.TestCase):
+    def test_exact_monotonic_version_chain_and_names(self):
+        self.assertEqual((strategy.OFFICIAL_VERSION, strategy.PRIOR_OVERLAY_VERSION), (1370, 1373))
+        self.assertEqual((strategy.CANDIDATE_VERSION, strategy.RESTORE_VERSION), (1374, 1375))
+        self.assertEqual(strategy.CANDIDATE_VERSION, strategy.PRIOR_OVERLAY_VERSION + 1)
+        self.assertEqual(strategy.RESTORE_VERSION, strategy.CANDIDATE_VERSION + 1)
+        self.assertEqual(strategy.CANDIDATE_FILENAME, "Forerunner245_1374-flyos-neural-specimen-n64.gcd.analysis-only.DO_NOT_INSTALL")
+        self.assertEqual(strategy.RESTORE_FILENAME, "Forerunner245_1375-official-payload-restore-n64.gcd.analysis-only.DO_NOT_INSTALL")
+
     def test_create_new_transaction_cleans_partial_outputs_and_never_overwrites(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
@@ -197,32 +229,6 @@ class NeuralSpecimenN64VersionStrategyTests(unittest.TestCase):
                     if op == "fsync": raise OSError("fsync")
                 with self.assertRaises(OSError): strategy.write_transaction(((target, b"payload"),), _open_file=opener, _fsync=fsync)
                 self.assertFalse(target.exists())
-
-    def test_construction_consumes_each_validated_binary_snapshot_once(self):
-        tracked = {
-            (ROOT / self.decision["inputs"]["official_gcd"]["path"]).resolve(),
-            (ROOT / self.decision["target_segments"]["hook"]["path"]).resolve(),
-            (ROOT / self.decision["target_segments"]["primary"]["path"]).resolve(),
-            (ROOT / self.decision["target_segments"]["secondary"]["path"]).resolve(),
-        }
-        original = Path.read_bytes
-        counts = {path: 0 for path in tracked}
-
-        def mutate_on_reopen(path):
-            resolved = path.resolve()
-            data = original(path)
-            if resolved in counts:
-                counts[resolved] += 1
-                if counts[resolved] > 1:
-                    return bytes([data[0] ^ 1]) + data[1:]
-            return data
-
-        with mock.patch.object(Path, "read_bytes", mutate_on_reopen):
-            candidate, restore, report = strategy.construct_pair(ROOT, self.decision_path)
-        self.assertEqual(set(counts.values()), {1})
-        self.assertEqual(strategy.sha256(candidate), "3a4a4af6355c132571c1158667cc43c96bf5da7a67737ab028267930e71134cd")
-        self.assertEqual(strategy.sha256(restore), "ccd2a29c51a41a436111239c7181e1cb0cea1f2fac1c48d600fff6dec103e5da")
-        self.assertEqual(report["validated_inputs"]["inputs.official_gcd"]["sha256"], strategy.sha256(self.official))
 
     def test_pure_short_write_is_removed_and_retry_is_safe(self):
         class ShortFile:
@@ -390,11 +396,15 @@ class NeuralSpecimenN64VersionStrategyTests(unittest.TestCase):
         self.assertIn("NeuralSpecimenN64Overlay1374", source)
         self.assertIn("NeuralSpecimenN64Restore1375", source)
         self.assertIn("BlockedN64Artifacts", source)
+
+    @unittest.skipUnless(shutil.which("powershell"), "PowerShell staging integration requires powershell")
+    def test_staging_script_rejects_n64_modes_in_powershell(self):
         for mode in ("NeuralSpecimenN64Overlay1374", "NeuralSpecimenN64Restore1375"):
             completed = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "tools/live-proof/stage-gupdate.ps1"), "-Mode", mode], cwd=ROOT, capture_output=True, text=True, check=False)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("explicitly blocked", (completed.stdout + completed.stderr).lower())
 
+    @unittest.skipUnless(shutil.which("powershell"), "PowerShell staging integration requires powershell")
     def test_staging_script_rejects_future_profile_aliases_by_path_name_and_hash(self):
         script = ROOT / "tools/live-proof/stage-gupdate.ps1"
         source = script.read_text(encoding="utf-8")

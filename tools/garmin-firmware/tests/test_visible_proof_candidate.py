@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 
 
+from private_fixtures import require_private_files
+
 TOOL_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_DIR))
 
@@ -13,11 +15,10 @@ import build_visible_proof_candidate as proof  # noqa: E402
 class VisibleProofCandidateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        source = Path(
+        source = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         )
-        if not source.exists():
-            raise unittest.SkipTest("pinned official 13.70 package is unavailable")
+        require_private_files(source)
         cls.source = source.read_bytes()
 
     def test_fixed_candidate_has_exact_expected_diff_and_hash(self):

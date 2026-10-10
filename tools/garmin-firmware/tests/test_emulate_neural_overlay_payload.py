@@ -9,6 +9,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 BUILD = ROOT / "flyos" / "target" / "fr245_1370_neural_overlay" / "build"
@@ -18,6 +20,10 @@ sys.path.insert(0, str(TOOLS))
 class NeuralOverlayEmulationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(
+            *(BUILD / name for name in ("manifest.json", "hook.bin", "primary.bin", "secondary.bin")),
+            ROOT / "artifacts/analysis/fr245-1370-second-allocation.json",
+        )
         spec = importlib.util.find_spec("emulate_neural_overlay_payload")
         cls.emulator = None
         if spec is not None:
@@ -143,11 +149,6 @@ class NeuralOverlayEmulationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Placement evidence SHA256 mismatch"):
             self.module().placement_gate(expected_sha256="0" * 64)
 
-    def test_wrong_hook_length_or_instruction_is_rejected(self):
-        for hook in (b"", b"\x00\xbf", b"\x00\xbf\x00\xbf"):
-            with self.subTest(hook=hook), self.assertRaisesRegex(ValueError, "four-byte Thumb BL"):
-                self.module().decode_hook(hook)
-
     def test_target_write_to_framebuffer_canary_is_rejected(self):
         emulator = self.module()
         bundle = emulator.load_build(BUILD)
@@ -163,6 +164,17 @@ class NeuralOverlayEmulationTests(unittest.TestCase):
         corrupted = replace(bundle, primary=b"\x00\x48\x00\x68\x14\xf0\x0f\x40" + bundle.primary[8:])
         with self.assertRaisesRegex(ValueError, "Unapproved peripheral read"):
             emulator.emulate(corrupted)
+
+
+class NeuralOverlayEmulatorUnitTests(unittest.TestCase):
+    def module(self):
+        import emulate_neural_overlay_payload
+        return emulate_neural_overlay_payload
+
+    def test_wrong_hook_length_or_instruction_is_rejected(self):
+        for hook in (b"", b"\x00\xbf", b"\x00\xbf\x00\xbf"):
+            with self.subTest(hook=hook), self.assertRaisesRegex(ValueError, "four-byte Thumb BL"):
+                self.module().decode_hook(hook)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools/garmin-firmware"))
 import neural_specimen_n64_version_strategy as custody  # noqa: E402
@@ -13,6 +15,8 @@ import stateless_home_diagnostic_package as package  # noqa: E402
 class StatelessHomeDiagnosticPackageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(*(ROOT / path for path in package.PINNED
+                                if path.parts[0] == "artifacts"))
         cls.before = {str(path): package.sha(package._snapshot(ROOT, path)) for path in package.PINNED}
         cls.candidate, cls.restore, cls.report = package.construct_pair(ROOT)
 
@@ -51,6 +55,18 @@ class StatelessHomeDiagnosticPackageTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "FAIL")
         self.assertFalse(report["checks"]["candidate_byte_exact"])
 
+    def test_locked_staging_and_offline_names(self):
+        source = package._snapshot(ROOT, package.STAGE).decode("utf-8")
+        self.assertNotIn(package.CANDIDATE_NAME, source)
+        self.assertNotIn(package.RESTORE_NAME, source)
+        self.assertNotIn(package.sha(self.candidate).upper(), source)
+        self.assertNotIn(package.sha(self.restore).upper(), source)
+        self.assertTrue(package.CANDIDATE_NAME.endswith(package.SUFFIX))
+        self.assertTrue(package.RESTORE_NAME.endswith(package.SUFFIX))
+        self.assertFalse(self.report["policy"]["live_staging_allowed"])
+
+
+class StatelessHomeDiagnosticPublicSafetyTests(unittest.TestCase):
     def test_source_hash_and_missing_receipt_fail_closed(self):
         with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
             custody.load_pinned_snapshot(ROOT / package.SRC / "probe.c", expected_sha256="0" * 64)
@@ -78,16 +94,6 @@ class StatelessHomeDiagnosticPackageTests(unittest.TestCase):
                 custody.write_transaction(((first, b"first"), (second, b"second")), _read_back=corrupt_second)
             self.assertFalse(first.exists())
             self.assertFalse(second.exists())
-
-    def test_locked_staging_and_offline_names(self):
-        source = package._snapshot(ROOT, package.STAGE).decode("utf-8")
-        self.assertNotIn(package.CANDIDATE_NAME, source)
-        self.assertNotIn(package.RESTORE_NAME, source)
-        self.assertNotIn(package.sha(self.candidate).upper(), source)
-        self.assertNotIn(package.sha(self.restore).upper(), source)
-        self.assertTrue(package.CANDIDATE_NAME.endswith(package.SUFFIX))
-        self.assertTrue(package.RESTORE_NAME.endswith(package.SUFFIX))
-        self.assertFalse(self.report["policy"]["live_staging_allowed"])
 
 
 if __name__ == "__main__":

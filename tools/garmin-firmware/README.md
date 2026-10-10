@@ -15,10 +15,13 @@ streams into the generated analysis tree:
 powershell -ExecutionPolicy Bypass -File tools/garmin-firmware/run_analysis.ps1
 ```
 
-Run the parser tests:
+For public-checkout setup, pinned Python test dependencies, and the distinction
+between public unit tests and private integration skips, see
+[the test instructions](tests/README.md). A dependency-free allocation smoke
+check is:
 
-```powershell
-python -m unittest discover -s tools/garmin-firmware/tests -v
+```sh
+python -B -m unittest discover -s tools/garmin-firmware/tests -p test_find_overlay_allocation.py -v
 ```
 
 Import and analyze only the K28F internal-flash part of the non-Music 3.10 and

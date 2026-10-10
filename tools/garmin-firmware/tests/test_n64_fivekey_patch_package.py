@@ -4,6 +4,9 @@ from pathlib import Path
 import sys
 import unittest
 
+
+from private_fixtures import require_private_files
+
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
@@ -15,10 +18,8 @@ class FiveKeyPackageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = Path(__file__).resolve().parents[3]
-        if not (root / package.OFFICIAL_RELATIVE).is_file():
-            raise unittest.SkipTest("private original firmware is unavailable")
-        if not (root / package.INSTALLED_CANDIDATE_RELATIVE).is_file():
-            raise unittest.SkipTest("private 13.76 source is unavailable")
+        require_private_files(root / package.OFFICIAL_RELATIVE,
+                              root / package.INSTALLED_CANDIDATE_RELATIVE)
         cls.root = root
         cls.official = (root / package.OFFICIAL_RELATIVE).read_bytes()
         cls.installed = (root / package.INSTALLED_CANDIDATE_RELATIVE).read_bytes()

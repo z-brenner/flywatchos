@@ -1,12 +1,15 @@
 import copy
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+
+from private_fixtures import require_private_files
 
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
@@ -26,6 +29,7 @@ class NeuralOverlayVersionStrategyTests(unittest.TestCase):
             / "analysis"
             / "fr245-1370-neural-offline-construction-decision.json"
         )
+        require_private_files(cls.decision_path, ROOT / "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD")
         cls.decision = json.loads(cls.decision_path.read_text(encoding="utf-8"))
         cls.official = (
             ROOT / cls.decision["inputs"]["official_gcd"]["path"]
@@ -189,6 +193,47 @@ class NeuralOverlayVersionStrategyTests(unittest.TestCase):
                     expected_size=pinned["compiled_size"],
                 )
 
+    def test_report_only_refresh_preserves_existing_package_bytes_and_metadata(self):
+        package_paths = (
+            strategy.EXACT_QUARANTINE_ROOT / strategy.CANDIDATE_FILENAME,
+            strategy.EXACT_QUARANTINE_ROOT / strategy.RESTORE_FILENAME,
+        )
+
+        def snapshot(path):
+            stat = path.stat()
+            data = path.read_bytes()
+            return (
+                len(data),
+                strategy.sha256(data),
+                stat.st_ctime_ns,
+                stat.st_mtime_ns,
+            )
+
+        before = {path: snapshot(path) for path in package_paths}
+        result = strategy.refresh_attestation_reports(ROOT, self.decision_path)
+        after = {path: snapshot(path) for path in package_paths}
+        self.assertEqual(after, before)
+        self.assertEqual(result["verdict"], "PASS")
+        self.assertTrue(result["package_bytes_and_metadata_unchanged"])
+
+        build = json.loads(
+            (
+                strategy.EXACT_ANALYSIS_ROOT / strategy.BUILD_REPORT_FILENAME
+            ).read_text(encoding="utf-8")
+        )
+        strict = json.loads(
+            (
+                strategy.EXACT_ANALYSIS_ROOT / strategy.STRICT_REPORT_FILENAME
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(build["decision_sha256"], strategy.DECISION_SHA256)
+        self.assertEqual(strict["build_evidence"]["decision_sha256"], strategy.DECISION_SHA256)
+        self.assertTrue(
+            build["attestation_refresh"]["package_bytes_and_metadata_unchanged"]
+        )
+
+
+class NeuralOverlayPublicSafetyTests(unittest.TestCase):
     def test_transaction_removes_every_created_output_after_failure(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             root = Path(directory)
@@ -275,93 +320,56 @@ class NeuralOverlayVersionStrategyTests(unittest.TestCase):
             self.assertTrue(partial.exists())
             partial.unlink()
 
-    def test_report_only_refresh_preserves_existing_package_bytes_and_metadata(self):
-        package_paths = (
-            strategy.EXACT_QUARANTINE_ROOT / strategy.CANDIDATE_FILENAME,
-            strategy.EXACT_QUARANTINE_ROOT / strategy.RESTORE_FILENAME,
-        )
-
-        def snapshot(path):
-            stat = path.stat()
-            data = path.read_bytes()
-            return (
-                len(data),
-                strategy.sha256(data),
-                stat.st_ctime_ns,
-                stat.st_mtime_ns,
-            )
-
-        before = {path: snapshot(path) for path in package_paths}
-        result = strategy.refresh_attestation_reports(ROOT, self.decision_path)
-        after = {path: snapshot(path) for path in package_paths}
-        self.assertEqual(after, before)
-        self.assertEqual(result["verdict"], "PASS")
-        self.assertTrue(result["package_bytes_and_metadata_unchanged"])
-
-        build = json.loads(
-            (
-                strategy.EXACT_ANALYSIS_ROOT / strategy.BUILD_REPORT_FILENAME
-            ).read_text(encoding="utf-8")
-        )
-        strict = json.loads(
-            (
-                strategy.EXACT_ANALYSIS_ROOT / strategy.STRICT_REPORT_FILENAME
-            ).read_text(encoding="utf-8")
-        )
-        self.assertEqual(build["decision_sha256"], strategy.DECISION_SHA256)
-        self.assertEqual(strict["build_evidence"]["decision_sha256"], strategy.DECISION_SHA256)
-        self.assertTrue(
-            build["attestation_refresh"]["package_bytes_and_metadata_unchanged"]
-        )
-
     def test_output_paths_fail_closed(self):
-        root = strategy.EXACT_QUARANTINE_ROOT
-        expected = root / strategy.CANDIDATE_FILENAME
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
-            temporary_root = Path(directory)
-            strategy.validate_output_target(
-                temporary_root / strategy.CANDIDATE_FILENAME,
-                temporary_root,
-                input_paths=[],
+        with tempfile.TemporaryDirectory(dir=ROOT) as quarantine:
+            root = Path(quarantine)
+            with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+                temporary_root = Path(directory)
+                strategy.validate_output_target(
+                    temporary_root / strategy.CANDIDATE_FILENAME,
+                    temporary_root,
+                    input_paths=[],
+                )
+
+            bad = (
+                root / ".." / "escaped" / strategy.CANDIDATE_FILENAME,
+                ROOT / "other" / strategy.CANDIDATE_FILENAME,
+                Path("D:/") / strategy.CANDIDATE_FILENAME,
+                root / "wrong.gcd",
             )
-        with self.assertRaisesRegex(ValueError, "already exists"):
-            strategy.validate_output_target(expected, root, input_paths=[])
+            for path in bad:
+                with self.subTest(path=path):
+                    with self.assertRaises(ValueError):
+                        strategy.validate_output_target(path, root, input_paths=[])
 
-        bad = (
-            root / ".." / "escaped" / strategy.CANDIDATE_FILENAME,
-            ROOT / "other" / strategy.CANDIDATE_FILENAME,
-            Path("D:/") / strategy.CANDIDATE_FILENAME,
-            root / "wrong.gcd",
-        )
-        for path in bad:
-            with self.subTest(path=path):
+            with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+                alias_root = Path(directory)
+                alias = alias_root / strategy.CANDIDATE_FILENAME
+                with self.assertRaisesRegex(ValueError, "input"):
+                    strategy.validate_output_target(alias, alias_root, input_paths=[alias])
+
+            with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+                existing = Path(directory) / strategy.CANDIDATE_FILENAME
+                existing.write_bytes(b"already here")
+                with self.assertRaisesRegex(ValueError, "already exists"):
+                    strategy.validate_output_target(existing, Path(directory), input_paths=[])
+
+                original = Path(directory) / "original.bin"
+                original.write_bytes(b"pinned")
+                hardlink = Path(directory) / strategy.RESTORE_FILENAME
+                os.link(original, hardlink)
                 with self.assertRaises(ValueError):
-                    strategy.validate_output_target(path, root, input_paths=[])
-
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
-            alias_root = Path(directory)
-            alias = alias_root / strategy.CANDIDATE_FILENAME
-            with self.assertRaisesRegex(ValueError, "input"):
-                strategy.validate_output_target(alias, alias_root, input_paths=[alias])
-
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
-            existing = Path(directory) / strategy.CANDIDATE_FILENAME
-            existing.write_bytes(b"already here")
-            with self.assertRaisesRegex(ValueError, "already exists"):
-                strategy.validate_output_target(existing, Path(directory), input_paths=[])
-
-            original = Path(directory) / "original.bin"
-            original.write_bytes(b"pinned")
-            hardlink = Path(directory) / strategy.RESTORE_FILENAME
-            os.link(original, hardlink)
-            with self.assertRaises(ValueError):
-                strategy.validate_output_target(hardlink, Path(directory), input_paths=[original])
+                    strategy.validate_output_target(hardlink, Path(directory), input_paths=[original])
 
     def test_staging_guard_has_no_neural_mode(self):
         script = ROOT / "tools" / "live-proof" / "stage-gupdate.ps1"
         source = script.read_text(encoding="utf-8")
         self.assertNotIn(strategy.CANDIDATE_FILENAME, source)
         self.assertNotIn(strategy.RESTORE_FILENAME, source)
+
+    @unittest.skipUnless(shutil.which("powershell"), "PowerShell staging integration requires powershell")
+    def test_staging_guard_rejects_neural_mode_in_powershell(self):
+        script = ROOT / "tools" / "live-proof" / "stage-gupdate.ps1"
         completed = subprocess.run(
             [
                 "powershell",

@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools" / "garmin-firmware"))
 import fr245_usb_detach as usb
@@ -16,6 +18,9 @@ EVIDENCE_DIR = Path(os.environ.get("FLYOS_ATLAS_EVIDENCE_DIR", ROOT / "artifacts
 
 class UsbDetachTests(unittest.TestCase):
     def test_pinned_detach_inventory_does_not_claim_unproved_context(self):
+        require_private_files(ROOT / "artifacts/firmware/analysis/Forerunner245_1370_GUPDATE/stream_01_fw_all_bin.bin",
+            EVIDENCE_DIR / "fr245-1370-usb-detach-ghidra.json",
+            EVIDENCE_DIR / "fr245-1370-usb-detach-ghidra.log")
         report = usb.analyze_usb_detach(ROOT, evidence_dir=EVIDENCE_DIR)
         self.assertEqual("2f9c2ca2710dae634ce952ba48ae34789e83fb902106e39869c0d9d36f93020a",
                          report["state_machine"]["sha256"])
@@ -42,6 +47,7 @@ class UsbDetachTests(unittest.TestCase):
         self.assertEqual("unproved", report["modal_outcome"]["kind"])
 
     def test_state_three_wait_is_not_a_bounded_detach_proof(self):
+        require_private_files(ROOT / "artifacts/firmware/analysis/Forerunner245_1370_GUPDATE/stream_01_fw_all_bin.bin")
         report = usb.analyze_usb_detach(ROOT, evidence_dir=EVIDENCE_DIR)
         self.assertEqual(0, report["teardown"]["cache_after_local_path"])
         self.assertEqual([0x20892, 0x2089A], report["edges"]["3_to_detach"]["counterexample_path"])
@@ -78,6 +84,8 @@ class UsbDetachTests(unittest.TestCase):
                 self.assertEqual([collision], [path.name for path in folder.iterdir()])
 
     def test_malformed_memory_rows_return_complete_failed_gate_report(self):
+        require_private_files(ROOT / "artifacts/firmware/analysis/Forerunner245_1370_GUPDATE/stream_01_fw_all_bin.bin",
+            EVIDENCE_DIR / "fr245-1370-usb-detach-ghidra.json")
         import atlas_shell_feasibility as feasibility
         original = json.loads((EVIDENCE_DIR / "fr245-1370-usb-detach-ghidra.json").read_bytes())
         valid_row = original["memory_operations"][0]
@@ -105,6 +113,7 @@ class UsbDetachTests(unittest.TestCase):
     def test_ghidra_rejects_either_output_collision_without_creating_its_sibling(self):
         launcher = ROOT / "tools/ghidra/ghidra_12.1.3_PUBLIC/support/analyzeHeadless.bat"
         project = (ROOT / "artifacts/firmware/ghidra-code").resolve()
+        require_private_files(project / "FR245_1370_CODE.gpr")
         for collision in ("inventory.json", "decompilation.txt"):
             with self.subTest(collision=collision), tempfile.TemporaryDirectory() as directory:
                 folder = Path(directory)

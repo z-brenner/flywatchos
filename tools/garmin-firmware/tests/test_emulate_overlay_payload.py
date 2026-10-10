@@ -3,6 +3,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 sys.path.insert(0, str(TOOLS))
@@ -13,6 +15,7 @@ import emulate_overlay_payload as emulator
 class OverlayEmulationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(ROOT / "flyos/target/fr245_1370_overlay/build/overlay.bin")
         cls.payload = (
             ROOT
             / "flyos"
