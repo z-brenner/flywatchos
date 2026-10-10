@@ -270,7 +270,10 @@ function experimentsRun() {
     // Preserve the completed protocol, not the editable form, and bind it to
     // the actual bundled sources. These fields never drive simulated activity.
     experimentsResult={...result,model_metadata:JSON.parse(JSON.stringify(experimentsMetadata())),
-      artifact_provenance:{live_wasm_sha256:data.live_wasm_sha256??null,experiment_protocol_sha256:data.experiment_protocol_sha256??null}};
+      artifact_provenance:{live_wasm_sha256:data.live_wasm_sha256??null,
+        live_wasm_manifest_sha256:data.live_wasm_manifest_sha256??null,
+        live_wasm_manifest:JSON.parse(JSON.stringify(data.live_wasm_manifest??null)),
+        experiment_protocol_sha256:data.experiment_protocol_sha256??null}};
     experimentsDrawResults();
     $('experiments-results').hidden=false;$('experiments-empty').hidden=true;
     $('experiments-export').disabled=false;

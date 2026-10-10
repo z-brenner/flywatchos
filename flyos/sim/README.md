@@ -182,6 +182,18 @@ state field. DOM tests exercise the real Wasm but stub canvas rendering; they
 are not browser layout, real-pointer-device or visual QA. The included preview
 images/animation are generated from real C frames, not browser screenshots.
 
+For a live or experiment bundle, `build_interaction_lab.py --wasm module.wasm`
+requires the adjacent `module.wasm.json` produced by `build_live_wasm.py`.
+The bundler checks the module byte count and SHA-256, the complete current
+C/header/data/metadata source-hash set, and the host-only ABI contract. It then
+runs the existing Node validator against the exact bytes it embeds, with a
+30-second timeout. Use `--node /path/to/node` if Node is not on `PATH`.
+Missing, stale, malformed or mismatched pairs fail before any bundle output;
+rebuild and keep the module and sidecar together. Replay-only builds need
+neither the pair nor Node. The verified manifest and its original byte hash
+travel with the embedded artifact. These checks establish local provenance
+consistency, not cryptographic attestation against a deliberately forged pair.
+
 ## Alternate published-topology model
 
 The bridge now supports model 1, CX60, beside unchanged model 0 Brain64. Model

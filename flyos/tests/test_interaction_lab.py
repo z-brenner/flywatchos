@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 EXPORTER = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else None
 BUILDER = Path(__file__).parents[1] / 'tools' / 'build_interaction_lab.py'
@@ -186,6 +187,32 @@ class InteractionLabTests(unittest.TestCase):
         self.assertEqual(result.stdout, b'')
 
     def test_builder_embeds_optional_wasm_without_network(self):
+        # Packaging contract only; the separately tested verifier owns identity
+        # and ABI validation. Aggregate CI packages a freshly compiled real pair.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wasm = root / 'empty.wasm'
+            wasm.write_bytes(b'\x00asm\x01\x00\x00\x00')
+            output = root / 'lab'
+            manifest = {'sha256': hashlib.sha256(wasm.read_bytes()).hexdigest(),
+                        'source_sha256': {'sim/circuit_models.json': hashlib.sha256(
+                            (BUILDER.parents[1] / 'sim/circuit_models.json').read_bytes()).hexdigest()}}
+            self.assertTrue(hasattr(builder, 'wasm_builder'), 'bundle must use the source-identity verifier')
+            with mock.patch.object(builder.wasm_builder, 'verified_artifact',
+                                   return_value=(wasm.read_bytes(), manifest, 'a' * 64)) as verify:
+                builder.build(EXPORTER, output, wasm)
+            verify.assert_called_once_with(wasm, 'node')
+            html = (output / 'index.html').read_text()
+            payload = html.split('<script id="lab-data" type="application/json">', 1)[1].split('</script>', 1)[0]
+            data = json.loads(payload)
+            self.assertEqual(base64.b64decode(data['live_wasm']), wasm.read_bytes())
+            self.assertEqual(data['live_wasm_sha256'], hashlib.sha256(wasm.read_bytes()).hexdigest())
+            self.assertEqual(data['live_wasm_manifest'], manifest)
+            self.assertEqual(data['live_wasm_manifest_sha256'], 'a' * 64)
+            self.assertIn("'wasm-unsafe-eval'", html)
+            self.assertNotIn('fetch(', html)
+
+    def test_builder_requires_adjacent_manifest_before_creating_attributed_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             wasm = root / 'empty.wasm'
@@ -193,14 +220,21 @@ class InteractionLabTests(unittest.TestCase):
             output = root / 'lab'
             result = subprocess.run([sys.executable, str(BUILDER), '--exporter', str(EXPORTER),
                                      '--output', str(output), '--wasm', str(wasm)], capture_output=True)
-            self.assertEqual(result.returncode, 0, result.stderr.decode())
-            html = (output / 'index.html').read_text()
-            payload = html.split('<script id="lab-data" type="application/json">', 1)[1].split('</script>', 1)[0]
-            data = json.loads(payload)
-            self.assertEqual(base64.b64decode(data['live_wasm']), wasm.read_bytes())
-            self.assertEqual(data['live_wasm_sha256'], hashlib.sha256(wasm.read_bytes()).hexdigest())
-            self.assertIn("'wasm-unsafe-eval'", html)
-            self.assertNotIn('fetch(', html)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('manifest', result.stderr.decode())
+            self.assertIn('build_live_wasm.py', result.stderr.decode())
+            self.assertFalse(output.exists())
+
+    def test_builder_rejects_metadata_drift_after_manifest_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wasm = root / 'module.wasm'
+            self.assertTrue(hasattr(builder, 'wasm_builder'), 'bundle must bind attributed model metadata')
+            with mock.patch.object(builder.wasm_builder, 'verified_artifact', return_value=(
+                    b'\x00asm\x01\x00\x00\x00', {'source_sha256': {'sim/circuit_models.json': '0' * 64}}, 'a' * 64)):
+                with self.assertRaisesRegex(ValueError, 'metadata|source|identity'):
+                    builder.build(EXPORTER, root / 'lab', wasm)
+            self.assertFalse((root / 'lab/index.html').exists())
 
     def test_builder_rejects_malformed_wasm(self):
         with tempfile.TemporaryDirectory() as tmp:

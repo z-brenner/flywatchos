@@ -120,8 +120,14 @@ connections, neurons or dynamics and do not promote any target feasibility gate.
 
 The export includes both exact C command sequences, the committed protocol
 configuration and phase boundaries, every raw sample and its derived metrics,
-model source/approximation metadata, and hashes identifying the embedded Wasm
-and experiment runner. Editing the form after a run does not rewrite that run's
+model source/approximation metadata, the validated build manifest with its source
+hashes, and hashes identifying the embedded Wasm, original manifest bytes and
+experiment runner. At build time, a live bundle requires the module's adjacent
+`.wasm.json` manifest and verifies its module bytes plus every required source
+and provenance digest against the current checkout. Missing or stale identities
+fail closed with a rebuild instruction. This consistency check prevents
+accidental stale/mislabeled builds; it is not cryptographic attestation against
+a deliberately forged local manifest. Editing the form after a run does not rewrite that run's
 export. The experiment instances never advance the interactive live specimen.
 
 Tests replay commands against the actual Wasm, compare every captured state and

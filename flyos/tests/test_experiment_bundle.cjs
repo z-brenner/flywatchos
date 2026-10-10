@@ -40,6 +40,11 @@ function readBlob(w,blob){return new Promise((resolve,reject)=>{const r=new w.Fi
   assert.equal($('experiments-export').disabled,false,$('experiments-status-line').textContent);
   let saved=JSON.parse(ev('JSON.stringify(experimentsExportData())'));
   assert.equal(saved.artifact_provenance.live_wasm_sha256,ev('data.live_wasm_sha256'));
+  assert.equal(saved.artifact_provenance.live_wasm_manifest_sha256,ev('data.live_wasm_manifest_sha256'));
+  assert.deepEqual(saved.artifact_provenance.live_wasm_manifest,JSON.parse(ev('JSON.stringify(data.live_wasm_manifest)')));
+  assert.equal(saved.artifact_provenance.live_wasm_manifest.sha256,saved.artifact_provenance.live_wasm_sha256);
+  assert.equal(saved.artifact_provenance.live_wasm_manifest.hardware_verified,false);
+  assert.ok(saved.artifact_provenance.live_wasm_manifest.source_sha256['sim/cx_circuit.c']);
   assert.equal(saved.artifact_provenance.experiment_protocol_sha256,ev('data.experiment_protocol_sha256'));
   assert.equal(saved.model_metadata.source_commit,'dfb95dfeaad0da2df0f7f687846d4df44079a483');
   assert.match(saved.model_metadata.license_notice,/MIT License/);
@@ -76,6 +81,18 @@ function readBlob(w,blob){return new Promise((resolve,reject)=>{const r=new w.Fi
     assert.equal(at,arm.commands.length);
     assert.deepEqual(Array.from(new Uint8Array(api.memory.buffer,api.fly_lab_pixels(),57600)),arm.finalPixels);
   }
+  // Source comparison describes the documented default, never every custom run.
+  $('experiment-perturb').value='1';input('experiment-perturb');click('experiments-run');
+  let custom=JSON.parse(ev('JSON.stringify(experimentsExportData())'));
+  assert.equal(custom.summary.firstTreatmentEpgSilence,null,'one loss step does not establish decay to silence');
+  assert.match($('experiments-source-comparison').textContent,/documented default cue-loss configuration/i);
+  assert.doesNotMatch($('experiments-source-comparison').textContent,/In our cue-loss trial/i);
+  $('experiment-strength').value='0';input('experiment-strength');click('experiments-run');
+  custom=JSON.parse(ev('JSON.stringify(experimentsExportData())'));
+  assert.ok(custom.treatment.frames.every(frame=>frame.epgRawTotal===0),'zero-strength trial starts silent rather than decaying');
+  assert.match($('experiments-source-comparison').textContent,/already-silent/i);
+  $('experiment-strength').value='768';input('experiment-strength');
+  $('experiment-perturb').value='96';input('experiment-perturb');
   $('experiments-protocol').value='cue-drive';change('experiments-protocol');
   $('experiment-drive').value='-768';input('experiment-drive');click('experiments-run');
   saved=JSON.parse(ev('JSON.stringify(experimentsExportData())'));

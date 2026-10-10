@@ -27,7 +27,7 @@ function fixture(config) {
 }
 function makeDom() {
   const dom=new JSDOM(html,{runScripts:'outside-only'}),w=dom.window;
-  w.data={models:[metadata],live_wasm_sha256:'a'.repeat(64),experiment_protocol_sha256:'b'.repeat(64)};w.WebAssembly=WebAssembly;
+  w.data={models:[metadata],live_wasm_sha256:'a'.repeat(64),experiment_protocol_sha256:'b'.repeat(64),live_wasm_manifest_sha256:'c'.repeat(64),live_wasm_manifest:{schema:1,sha256:'a'.repeat(64),source_sha256:{'fixture.c':'d'.repeat(64)}}};w.WebAssembly=WebAssembly;
   w.eval(`var $=id=>document.getElementById(id); var liveMode=true, anatomyMode=false, labEngine=null, labModule=null, paused=0, released=0;
     function pause(){paused++;} function liveReleaseAll(){released++;} function leaveAnatomy(){anatomyMode=false;}`);
   const filename=path.join(source,'interaction_lab_experiments.js');w.eval(fs.existsSync(filename)?fs.readFileSync(filename,'utf8'):'');
@@ -82,6 +82,8 @@ try {
   const saved=w.experimentsExportData();assert.equal(saved.control.commands[0][0],'fly_lab_reset_model');assert.equal(saved.treatment.commands[1][0],'fly_lab_set_stimulus');
   assert.equal(saved.artifact_provenance.live_wasm_sha256,'a'.repeat(64));assert.equal(saved.artifact_provenance.experiment_protocol_sha256,'b'.repeat(64));
   assert.equal(saved.model_metadata.key,'fixture-cx60');
+  assert.equal(saved.artifact_provenance.live_wasm_manifest_sha256,'c'.repeat(64));
+  assert.equal(saved.artifact_provenance.live_wasm_manifest.source_sha256['fixture.c'],'d'.repeat(64));
   let blob=null,filename=null;w.URL.createObjectURL=value=>{blob=value;return 'blob:test';};w.URL.revokeObjectURL=()=>{};
   w.HTMLAnchorElement.prototype.click=function(){filename=this.download;};
   $('experiments-export').click();assert.equal(filename,'flywatch-paired-cue-shift.json');assert.ok(blob);
