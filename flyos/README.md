@@ -41,9 +41,18 @@ path emitted by your generator (possibly under `Debug/`). Open the generated
 server or network. The output directory must not already exist. `trace.json`
 and `SHA256SUMS` accompany the page for reproducibility.
 
-Seven scripted scenarios expose actual C-rendered neural frames, per-neuron
+Nine scripted scenarios expose actual C-rendered neural frames, per-neuron
 telemetry, key ownership, short-tap pulses, and abstract detach redraw state.
 The page provides play/pause, speed, frame stepping/scrubbing, a neuron
 inspector, and per-scenario export. It starts paused and pauses when hidden.
 The host policy lives in `sim/` and is never linked into a watch target.
 Read [the model contract](sim/README.md) before interpreting its results.
+
+
+The optional live sandbox compiles `sim/live_bridge.c` with the same Brain64,
+renderer, and host ownership policy into import-free WebAssembly. Run
+`python flyos/tools/build_live_wasm.py` with Zig and Node available, then add
+`--wasm flyos/build/flyos-live.wasm` to the lab builder. The page offers held-key
+controls, motor-burst/movement/rest presets, synthetic sensors, pause/step,
+deterministic seed resets, and a bounded activity history. See
+[`tests/README.md`](tests/README.md) for reproducible compiler and Node tests.

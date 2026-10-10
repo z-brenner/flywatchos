@@ -11,7 +11,8 @@ import unittest
 EXPORTER = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else None
 BUILDER = Path(__file__).parents[1] / 'tools' / 'build_interaction_lab.py'
 EXPECTED = {'home-controls', 'native-escape', 'view-transition', 'usb-detach',
-            'retry-exhaustion', 'stale-ack', 'invalid-view'}
+            'retry-exhaustion', 'stale-ack', 'invalid-view',
+            'classifier-guards', 'classifier-stability'}
 
 class InteractionLabTests(unittest.TestCase):
     def export(self):
@@ -59,11 +60,74 @@ class InteractionLabTests(unittest.TestCase):
         self.assertFalse(by_id['retry-exhaustion'][-1]['redraw_complete'])
         self.assertFalse(by_id['stale-ack'][-1]['redraw_complete'])
 
+    def test_classifier_scenarios_route_uncertainty_safely(self):
+        _, data = self.export()
+        by_id = {scenario['id']: scenario['frames'] for scenario in data['scenarios']}
+        self.assertIn('classifier-guards', list(by_id), 'bounded classifier replay is not implemented')
+        self.assertIn('classifier-stability', list(by_id))
+        guards = {f['action']: f for f in by_id['classifier-guards']}
+        for action in ['Unaligned pointer', 'Out-of-range node', 'Broken backlink',
+                       'Cycle detected', 'Ninth node rejected', 'Unreadable field',
+                       'All nodes hidden']:
+            frame = guards[action]
+            self.assertEqual(frame['view'], 'INVALID', action)
+            self.assertEqual(frame['route'], 'GARMIN', action)
+            self.assertEqual(frame['input_buttons'], 0, action)
+            self.assertEqual(frame['attempts'], 0, action)
+            self.assertTrue(frame['redraw_pending'], action)
+            self.assertFalse(frame['enqueued'], action)
+            self.assertEqual(frame['classifier']['source'], 'synthetic-reader')
+            self.assertGreater(frame['classifier']['reads'], 0)
+            self.assertLessEqual(frame['classifier']['reads'], 68)
+        self.assertEqual(guards['Hidden HOME, visible native']['view'], 'NON_HOME')
+        self.assertEqual(guards['Eight valid nodes']['view'], 'HOME')
+        self.assertEqual(guards['Eight valid nodes']['classifier']['reads'], 68)
+        self.assertEqual(guards['Eight valid nodes']['route'], 'FLYOS')
+        self.assertTrue(guards['Eight valid nodes']['enqueued'])
+        stability = {f['action']: f for f in by_id['classifier-stability']}
+        for action in ['Identity changed between captures', 'Root changed during capture']:
+            self.assertEqual(stability[action]['view'], 'INVALID')
+            self.assertEqual(stability[action]['route'], 'GARMIN')
+        # Explicit counterexample: two equal snapshots cannot detect complete ABA.
+        aba = stability['Complete ABA is invisible']
+        self.assertEqual(aba['view'], 'HOME')
+        self.assertEqual(aba['classifier']['limitation'], 'complete-ABA')
+        self.assertIn('not atomic', aba['detail'])
+        self.assertFalse(data['hardware_verified'])
+
     def test_exporter_rejects_unrecognized_arguments(self):
         self.assertTrue(EXPORTER and EXPORTER.is_file(), 'C interaction exporter has not been built')
         result = subprocess.run([str(EXPORTER), '--write-firmware'], capture_output=True)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, b'')
+
+    def test_builder_embeds_optional_wasm_without_network(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wasm = root / 'empty.wasm'
+            wasm.write_bytes(b'\x00asm\x01\x00\x00\x00')
+            output = root / 'lab'
+            result = subprocess.run([sys.executable, str(BUILDER), '--exporter', str(EXPORTER),
+                                     '--output', str(output), '--wasm', str(wasm)], capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            html = (output / 'index.html').read_text()
+            payload = html.split('<script id="lab-data" type="application/json">', 1)[1].split('</script>', 1)[0]
+            data = json.loads(payload)
+            self.assertEqual(base64.b64decode(data['live_wasm']), wasm.read_bytes())
+            self.assertEqual(data['live_wasm_sha256'], hashlib.sha256(wasm.read_bytes()).hexdigest())
+            self.assertIn("'wasm-unsafe-eval'", html)
+            self.assertNotIn('fetch(', html)
+
+    def test_builder_rejects_malformed_wasm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wasm = root / 'invalid.wasm'
+            wasm.write_bytes(b'not a WebAssembly module')
+            result = subprocess.run([sys.executable, str(BUILDER), '--exporter', str(EXPORTER),
+                                     '--output', str(root / 'lab'), '--wasm', str(wasm)], capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('invalid WebAssembly', result.stderr.decode())
+            self.assertFalse((root / 'lab' / 'index.html').exists())
 
     def test_standalone_bundle_and_hash_manifest(self):
         self.assertTrue(BUILDER.is_file(), 'offline lab builder is not implemented')

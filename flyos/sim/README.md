@@ -122,3 +122,62 @@ seconds or measured device scheduler ticks. Native view rendering is left
 untouched by the C renderer; the lab places a clearly labeled placeholder over
 that preserved framebuffer instead of inventing a Garmin screen. Battery 87%
 is synthetic; other unbound sensors remain unavailable.
+
+## Bounded synthetic view classifier
+
+`view_classifier.c` is a new public executable specification of the documented
+list shape. It uses an injected reader of logical 32-bit words. The documented
+addresses are integer fixture keys, never dereferenced as pointers. No native
+reader or target adapter exists.
+
+It captures at most eight aligned nodes twice, reading the root before and
+after each capture and validating predecessor/successor consistency, cycles,
+range and alignment. All four fields of all nodes, including hidden nodes,
+must match across captures. The maximum is 68 reader calls, including failed
+calls. A ninth node or invalid address is rejected without reading that node.
+The upper address constant is an inclusive node base; its last flags word ends
+at the documented RAM boundary. Only flag bit 0x2 controls visibility; other
+bits are opaque and compared in full. Empty or all-hidden lists are INVALID.
+
+A valid first visible HOME identity selects HOME; every other stable visible
+identity selects NON_HOME. An arbitrary synthetic non-HOME value is not proof
+of the historical update prompt. Missing readers, unreadable/unknown/partial
+words, malformed lists, root changes and differing captures fail to INVALID.
+The caller must return false for unknown or malformed logical words.
+
+Two equal snapshots do not prove atomicity. Complete ABA changes restored
+between samples, changes after the final sample, and adversarial repeated torn
+observations can remain invisible. The explicit ABA replay intentionally
+returns HOME and displays that limitation. This model does not reproduce
+inaccessible private proof receipts, establish object allocation/lifetime,
+prove target concurrency, or change any firmware feasibility gate.
+
+## Persistent live C bridge
+
+`live_bridge.c` is a single host-only bounded instance of the real Brain64,
+semantic-palette renderer and conservative key policy. Native tests and the
+WebAssembly build compile the same source. There is no JavaScript copy of the
+neural equations. Compilation requires the host-preview definition; no target
+hooks or storage assignments are provided.
+
+The bridge has no dynamic allocation, I/O, clock, native callback or redraw
+queue. Inputs and view context are supplied fixtures, validated before
+mutation. The live selector does not invoke the classifier. Optional sensors
+are cleared when unavailable, and values are bounded even when unavailable.
+Held ownership survives context changes. Pending release pulses are delivered
+only by one eligible HOME step; native/invalid/USB steps leave the framebuffer
+and pulse untouched. Reset deliberately begins a new specimen and clears all
+held input state.
+
+The browser reads indexed pixels and signed activations from fixed WebAssembly
+memory. It keeps at most 128 display snapshots and 16,384 recorded commands.
+The complete command sequence, seed and recent snapshots are included in live
+trace export. The command limit pauses the session and requires reset. Pausing stops automatic stepping while preserving held input for manual
+steps. Hiding or leaving the sandbox releases controls; pointer-held chords survive
+focus movement, while keyboard-held controls release on focus loss. Each
+network step is abstract model time, not a measured watch or sensor interval.
+
+Node/native differential tests compare every activation, framebuffer byte and
+state field. DOM tests exercise the real Wasm but stub canvas rendering; they
+are not browser layout, real-pointer-device or visual QA. The included preview
+images/animation are generated from real C frames, not browser screenshots.

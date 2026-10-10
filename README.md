@@ -172,9 +172,15 @@ color roles, preview export, complete key-sequence ownership, redraw policy,
 and deterministic behavior. Target builds require a
 local ARM toolchain plus byte-pinned firmware evidence that is not distributed here.
 
-## Explore the offline interaction lab
+## Play with the offline specimen
 
-After the host build, generate a self-contained interactive replay:
+The lab now has a live neural sandbox as well as nine deterministic replays.
+Hold the watch keys, inject motor bursts or movement, remove stimuli, vary
+synthetic sensor inputs, and reset or randomize the specimen seed. Every
+activation and framebuffer pixel is computed by the real C implementation.
+The standalone page needs no server or network.
+
+After the host build, generate a replay-only bundle:
 
 ```sh
 python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interaction-exporter --output flyos/build/interaction-lab
@@ -182,15 +188,32 @@ python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interac
 
 On Windows, use the built executable's `.exe` path (for multi-configuration
 CMake generators it may be under `flyos/build/Debug/`). Open the generated
-`index.html` in a browser. Choose one of seven scenarios, scrub or play its
+`index.html` in a browser. Choose one of nine scenarios, scrub or play its
 frames, inspect any of the 64 neurons, and export the selected trace.
 No server, network connection, proprietary input, or watch is needed. The
 output directory must be new; existing captures are never overwritten.
 
+To include the live engine, install the compiler in an isolated environment
+and build the small, import-free WebAssembly module:
+
+```sh
+python -m venv /tmp/flywatchos-tools
+/tmp/flywatchos-tools/bin/python -m pip install ziglang==0.14.1
+/tmp/flywatchos-tools/bin/python flyos/tools/build_live_wasm.py
+python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interaction-exporter --wasm flyos/build/flyos-live.wasm --output flyos/build/live-lab
+```
+
+Use the matching `Scripts/python.exe` path on Windows. Node is required for
+build validation. Compiler installation needs registry access; the emitted
+page is entirely offline. Its live engine is 9,456 bytes in the tested build,
+imports nothing, and has a fixed 128 KiB memory limit. Replay mode still works
+when WebAssembly is unavailable. The live view selector is a supplied fixture,
+not a native view reader. See [test and build instructions](flyos/tests/README.md).
+
 The HOME images and neural telemetry come from the real portable C model and
 renderer. Native Garmin screens are deliberately not simulated. Inputs,
 callback eligibility, queue acceptance, and display acknowledgments are
-explicit host fixtures. This is a policy/replay lab, not a watch emulator,
+explicit host fixtures. This is a host simulation and policy lab, not a watch emulator,
 firmware candidate, proof of hardware safety, or solution to the live USB delay.
 See [host policy semantics](flyos/sim/README.md) and
 [public versus private test coverage](tools/garmin-firmware/tests/README.md).
@@ -208,6 +231,8 @@ See [host policy semantics](flyos/sim/README.md) and
 - [x] Make every neural button effect visible and legible offline
 - [x] Record user-observed 13.76 installation and its limitations
 - [x] Add host-only input ownership and redraw regression lab
+- [x] Run the real C network interactively in an offline WebAssembly sandbox
+- [x] Exercise bounded synthetic view snapshots and their ABA limitation
 - [ ] Prove target storage ownership and safe redraw context
 - [ ] Verify complete sequence ownership on hardware
 - [ ] Bind safe heart-rate, motion, and charging observations

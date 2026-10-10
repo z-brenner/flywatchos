@@ -1,7 +1,9 @@
 /* Host-only traces. Calls the real portable neuron model and C renderer.
- * No private firmware, target addresses, device paths or native calls. */
+ * No private firmware, device paths or native calls. Documented addresses are
+ * used only as integer keys in an injected synthetic memory fixture. */
 #include "display/neural_specimen.h"
 #include "sim/host_policy.h"
+#include "sim/view_classifier.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +22,9 @@ typedef struct {
     int route;
     bool completed;
     bool first_frame;
+    bool classified;
+    bool aba_limitation;
+    FlySimViewResult classification;
 } Lab;
 
 static const char *view_name(FlySimView view) {
@@ -67,7 +72,7 @@ static void frame(Lab *lab, const char *action, const char *detail) {
         "\"input_buttons\":%u,\"usb\":%s,\"redraw_pending\":%s,\"redraw_complete\":%s,"
         "\"redraw_exhausted\":%s,\"attempts\":%u,\"budget\":%u,"
         "\"epoch\":%llu,\"enqueued\":%s,\"safe_callback\":%s,"
-        "\"source_locked\":%s,\"usb_locked\":%s,\"state\":%u,\"neurons\":[",
+        "\"source_locked\":%s,\"usb_locked\":%s,\"state\":%u,",
         lab->first_frame ? "" : ",", action, detail, lab->tick++,
         view_name(lab->input.view), route_name(lab->route), lab->keys.flyos_held,
         lab->pulse, lab->sensors.buttons, lab->input.usb_mass_storage ? "true" : "false",
@@ -78,6 +83,13 @@ static void frame(Lab *lab, const char *action, const char *detail) {
         lab->callback.safe_callback ? "true" : "false",
         lab->callback.source_mutex_locked ? "true" : "false",
         lab->callback.usb_mutex_locked ? "true" : "false", lab->brain.state);
+    printf("\"classifier\":{\"source\":\"%s\",\"reason\":\"%s\","
+        "\"reads\":%u,\"nodes\":%u,\"limitation\":\"%s\"},\"neurons\":[",
+        lab->classified ? "synthetic-reader" : "supplied-context",
+        lab->classified ? fly_sim_view_reason_name(lab->classification.reason) : "not-run",
+        lab->classified ? lab->classification.read_count : 0u,
+        lab->classified ? lab->classification.node_count : 0u,
+        lab->aba_limitation ? "complete-ABA" : "none");
     for (unsigned n = 0; n < FLY_BRAIN64_NEURONS; ++n)
         printf("%s%d", n ? "," : "", lab->brain.activation[n]);
     printf("],\"pixels\":[");
@@ -103,6 +115,8 @@ static void key(Lab *lab, unsigned key_id, FlySimKeyPhase phase) {
 }
 
 static void view(Lab *lab, FlySimView new_view) {
+    lab->classified = false;
+    lab->aba_limitation = false;
     lab->input.view = new_view;
     lab->callback.view = new_view;
 }
@@ -118,9 +132,80 @@ static void submit(Lab *lab, bool accepted) {
     lab->submission = fly_sim_redraw_step(&lab->redraw, &lab->callback, accepted);
 }
 
+/* Synthetic sparse memory; these integers are never cast to pointers. */
+typedef struct {
+    uint32_t root;
+    uint32_t words[9][4];
+    unsigned count;
+    unsigned reads;
+    unsigned mutation;
+    uint32_t unreadable;
+} ViewFixture;
+
+static uint32_t fixture_address(unsigned node) {
+    return FLY_SIM_VIEW_NODE_MIN + 0x100u + node * 0x100u;
+}
+
+static void fixture_init(ViewFixture *fixture, unsigned count) {
+    memset(fixture, 0, sizeof(*fixture));
+    fixture->count = count;
+    fixture->root = count ? fixture_address(0u) : 0u;
+    for (unsigned node = 0; node < count; ++node) {
+        fixture->words[node][0] = node ? fixture_address(node - 1u) : 0u;
+        fixture->words[node][1] = node + 1u < count ? fixture_address(node + 1u) : 0u;
+        fixture->words[node][2] = FLY_SIM_VIEW_HOME_IDENTITY;
+    }
+}
+
+static bool fixture_read(void *context, uint32_t address, uint32_t *value) {
+    static const uint32_t offsets[] = {
+        FLY_SIM_VIEW_PREV_OFFSET, FLY_SIM_VIEW_NEXT_OFFSET,
+        FLY_SIM_VIEW_IDENTITY_OFFSET, FLY_SIM_VIEW_FLAGS_OFFSET};
+    ViewFixture *fixture = context;
+    ++fixture->reads;
+    if (fixture->mutation == 1u && fixture->reads == 7u)
+        fixture->words[0][2] = 0x12345u; /* Between single-node captures. */
+    if (fixture->mutation == 2u && fixture->reads == 6u)
+        fixture->root = fixture_address(1u); /* Before capture's final root. */
+    if (fixture->mutation == 3u && fixture->reads == 6u) {
+        /* Complete, deliberately unobserved A -> B -> A between samples. */
+        fixture->words[0][2] = 0x12345u;
+        fixture->words[0][2] = FLY_SIM_VIEW_HOME_IDENTITY;
+    }
+    if (address == fixture->unreadable) return false;
+    if (address == FLY_SIM_VIEW_ROOT_ADDRESS) {
+        *value = fixture->root;
+        return true;
+    }
+    for (unsigned node = 0; node < fixture->count; ++node)
+        for (unsigned field = 0; field < 4u; ++field)
+            if (address == fixture_address(node) + offsets[field]) {
+                *value = fixture->words[node][field];
+                return true;
+            }
+    return false;
+}
+
+static void classified_frame(Lab *lab, ViewFixture *fixture,
+                             const char *action, const char *detail) {
+    lab->classification = fly_sim_classify_view(fixture_read, fixture);
+    lab->classified = true;
+    lab->aba_limitation = fixture->mutation == 3u;
+    lab->input.view = lab->classification.classification == FLY_SIM_CLASS_HOME ?
+        FLY_SIM_VIEW_HOME : lab->classification.classification == FLY_SIM_CLASS_NON_HOME ?
+        FLY_SIM_VIEW_NATIVE : FLY_SIM_VIEW_INVALID;
+    lab->callback.view = lab->input.view;
+    key(lab, FLY_SIM_KEY_START, FLY_SIM_PRESS);
+    submit(lab, true);
+    frame(lab, action, detail);
+    key(lab, FLY_SIM_KEY_START, FLY_SIM_RELEASE);
+    lab->route = -1;
+}
+
 int main(int argc, char **argv) {
     Lab lab;
     FlySimRedrawToken old_token;
+    ViewFixture fixture;
     (void)argv;
     if (argc != 1) {
         fputs("usage: flyos-interaction-exporter (JSON to stdout)\n", stderr);
@@ -242,6 +327,44 @@ int main(int argc, char **argv) {
     frame(&lab, "Duplicate press", "Rejected without resetting or stealing the existing owner.");
     key(&lab, FLY_SIM_KEY_START, FLY_SIM_RELEASE);
     frame(&lab, "Original release", "The original valid sequence can still finish normally.");
+    printf("]}");
+
+    begin(&lab, "classifier-guards", "Trust is earned in bounds",
+          "The real host classifier reads a synthetic list. Malformed, cyclic, hidden-only and unreadable lists stay native without triggering a redraw.", false);
+    frame(&lab, "Before synthetic capture", "These integer-keyed fixtures are not watch memory or recovered firmware evidence.");
+    usb(&lab, true); usb(&lab, false);
+    fixture_init(&fixture, 2u); fixture.words[0][3] = FLY_SIM_VIEW_HIDDEN_BIT; fixture.words[1][2] = 0x12345u;
+    classified_frame(&lab, &fixture, "Hidden HOME, visible native", "First visible identity wins. A hidden HOME must not hide a visible native view.");
+    fixture_init(&fixture, 1u); fixture.root += 1u;
+    classified_frame(&lab, &fixture, "Unaligned pointer", "The classifier rejects this pointer before any node read.");
+    fixture_init(&fixture, 1u); fixture.root = FLY_SIM_VIEW_NODE_MAX + 4u;
+    classified_frame(&lab, &fixture, "Out-of-range node", "The entire documented node must fit the allowed synthetic address range.");
+    fixture_init(&fixture, 2u); fixture.words[1][0] = 0u;
+    classified_frame(&lab, &fixture, "Broken backlink", "Forward traversal alone is insufficient; each predecessor must match.");
+    fixture_init(&fixture, 2u); fixture.words[1][1] = fixture_address(0u);
+    classified_frame(&lab, &fixture, "Cycle detected", "Visited nodes cannot be revisited. The read budget stays bounded.");
+    fixture_init(&fixture, 9u);
+    classified_frame(&lab, &fixture, "Ninth node rejected", "Eight is the maximum. The ninth node is never read.");
+    fixture_init(&fixture, 1u); fixture.unreadable = fixture_address(0u) + FLY_SIM_VIEW_FLAGS_OFFSET;
+    classified_frame(&lab, &fixture, "Unreadable field", "An unknown reader result cannot be interpreted as HOME.");
+    fixture_init(&fixture, 2u); fixture.words[0][3] = FLY_SIM_VIEW_HIDDEN_BIT; fixture.words[1][3] = FLY_SIM_VIEW_HIDDEN_BIT;
+    classified_frame(&lab, &fixture, "All nodes hidden", "No visible identity means INVALID. Empty and all-hidden lists fail safely.");
+    fixture_init(&fixture, 8u);
+    classified_frame(&lab, &fixture, "Eight valid nodes", "Two equal full captures use exactly 68 reads. This is host-model evidence only.");
+    printf("]}");
+
+    begin(&lab, "classifier-stability", "Matching is not atomic",
+          "Changing captures fail closed. A complete change-and-restore between reads remains invisible; the lab makes that limitation explicit.", false);
+    fixture_init(&fixture, 1u);
+    classified_frame(&lab, &fixture, "Two matching HOME captures", "The first visible identity is HOME in both bounded captures.");
+    fixture_init(&fixture, 1u); fixture.mutation = 1u;
+    classified_frame(&lab, &fixture, "Identity changed between captures", "Every captured field is compared. A changed identity selects INVALID and Garmin.");
+    fixture_init(&fixture, 1u); fixture.mutation = 2u;
+    classified_frame(&lab, &fixture, "Root changed during capture", "Each capture checks the root before and after traversing the list.");
+    fixture_init(&fixture, 1u); fixture.words[0][2] = 0x12345u;
+    classified_frame(&lab, &fixture, "Stable synthetic native view", "An arbitrary non-HOME fixture remains native. This is not an observed update-prompt identity.");
+    fixture_init(&fixture, 1u); fixture.mutation = 3u;
+    classified_frame(&lab, &fixture, "Complete ABA is invisible", "HOME is returned here: matching sampled values are not atomic. Complete ABA and post-read changes need a separate concurrency argument.");
     printf("]}]}");
     return ferror(stdout) ? 1 : 0;
 }

@@ -106,8 +106,34 @@ add_test(NAME flyos-host-policy-tests COMMAND flyos-host-policy-tests)
 add_executable(flyos-interaction-exporter
     sim/export_interaction_trace.c display/neural_specimen.c fly/brain64.c)
 target_compile_definitions(flyos-interaction-exporter PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
-target_link_libraries(flyos-interaction-exporter PRIVATE flyos_sim_policy)
+target_link_libraries(flyos-interaction-exporter PRIVATE flyos_sim_policy flyos_sim_view)
 flyos_strict_warnings(flyos-interaction-exporter)
 add_test(NAME flyos-interaction-lab-tests
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interaction_lab.py
         $<TARGET_FILE:flyos-interaction-exporter>)
+
+add_library(flyos_sim_view sim/view_classifier.c)
+target_include_directories(flyos_sim_view PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+flyos_strict_warnings(flyos_sim_view)
+
+add_executable(flyos-view-classifier-tests tests/test_view_classifier.c)
+target_link_libraries(flyos-view-classifier-tests PRIVATE flyos_sim_view flyos_sim_policy)
+flyos_strict_warnings(flyos-view-classifier-tests)
+add_test(NAME flyos-view-classifier-tests COMMAND flyos-view-classifier-tests)
+
+add_executable(flyos-live-bridge-tests
+    tests/test_live_bridge.c sim/live_bridge.c sim/host_policy.c
+    fly/brain64.c display/neural_specimen.c)
+target_include_directories(flyos-live-bridge-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(flyos-live-bridge-tests PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
+flyos_strict_warnings(flyos-live-bridge-tests)
+add_test(NAME flyos-live-bridge-tests COMMAND flyos-live-bridge-tests)
+
+add_executable(flyos-live-bridge-trace
+    tests/live_bridge_trace.c sim/live_bridge.c sim/host_policy.c
+    fly/brain64.c display/neural_specimen.c)
+target_include_directories(flyos-live-bridge-trace PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(flyos-live-bridge-trace PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
+flyos_strict_warnings(flyos-live-bridge-trace)
+add_test(NAME flyos-live-wasm-build-failure-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_build_live_wasm.py)
