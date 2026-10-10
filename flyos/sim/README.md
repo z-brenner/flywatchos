@@ -182,6 +182,18 @@ state field. DOM tests exercise the real Wasm but stub canvas rendering; they
 are not browser layout, real-pointer-device or visual QA. The included preview
 images/animation are generated from real C frames, not browser screenshots.
 
+For a live or experiment bundle, `build_interaction_lab.py --wasm module.wasm`
+requires the adjacent `module.wasm.json` produced by `build_live_wasm.py`.
+The bundler checks the module byte count and SHA-256, the complete current
+C/header/data/metadata source-hash set, and the host-only ABI contract. It then
+runs the existing Node validator against the exact bytes it embeds, with a
+30-second timeout. Use `--node /path/to/node` if Node is not on `PATH`.
+Missing, stale, malformed or mismatched pairs fail before any bundle output;
+rebuild and keep the module and sidecar together. Replay-only builds need
+neither the pair nor Node. The verified manifest and its original byte hash
+travel with the embedded artifact. These checks establish local provenance
+consistency, not cryptographic attestation against a deliberately forged pair.
+
 ## Alternate published-topology model
 
 The bridge now supports model 1, CX60, beside unchanged model 0 Brain64. Model
@@ -212,3 +224,18 @@ or filtered-out pair must not be interpreted as an anatomical zero. The
 static export retains exact string body IDs, source attribution and explicit
 filter scope, with no activation frames. Read the [source data contract](data/hulse2021/README.md)
 for byte hashes, extraction rules, CC BY 4.0 attribution and limitations.
+
+## Paired perturbation experiments
+
+The experiment lens runs two isolated instances of the same real C/Wasm
+module, with identical reset and fixed warm-up. A constant-input control is
+paired with a bounded cue-shift, cue-loss or cue-plus-P-EN-drive intervention,
+then both return to the original inputs. It does not modify CX60 dynamics or
+advance the live specimen. Raw states, exact commands and descriptive metrics
+travel in the export. All phases use abstract C steps, not measured time.
+
+The [experiment contract](EXPERIMENTS.md) explains duplicate-normalized sector
+profiles, coarse-peak ties, residual activity below the readout's integer
+resolution, exact silence and fixed-point recovery differences. The comparison
+is against the evolving same-time control, not an assumed equilibrium. This
+is an implementation assay, not independent fly data or biological validation.

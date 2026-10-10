@@ -335,6 +335,8 @@ function anatomyExportData() {
 }
 function enterAnatomy() {
   if (!anatomyAvailable || anatomyMode) return;
+  if (typeof userLensSelected !== 'undefined') userLensSelected = true;
+  if (typeof leaveExperiments === 'function') leaveExperiments();
   pause();
   if (liveMode) liveReleaseAll(false);
   liveMode = false; anatomyMode = true;

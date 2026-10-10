@@ -64,6 +64,9 @@ npm install --prefix flyos/build/ui-tests --no-audit --no-fund jsdom@26.1.0
 node flyos/tests/test_interaction_lab_ui.cjs flyos/build/live-lab/index.html flyos/build/ui-tests/node_modules/jsdom
 node flyos/tests/test_interaction_lab_circuit.cjs flyos/build/ui-tests/node_modules/jsdom
 node flyos/tests/test_interaction_lab_anatomy.cjs flyos/build/ui-tests/node_modules/jsdom
+node flyos/tests/test_experiment_protocol.cjs flyos/build/flyos-live.wasm
+node flyos/tests/test_interaction_lab_experiments.cjs flyos/build/ui-tests/node_modules/jsdom
+node flyos/tests/test_experiment_bundle.cjs flyos/build/live-lab/index.html flyos/build/ui-tests/node_modules/jsdom
 ```
 
 The test uses the real embedded WebAssembly and a DOM implementation with
@@ -81,6 +84,15 @@ keyboard focus, metadata safety and static export. Full-bundle integration
 checks the measured dataset and transitions between live, anatomy and replay
 views without allowing anatomy navigation to step the C model.
 
+Paired experiments have separate actual-Wasm protocol tests, synthetic-fixture
+DOM tests and full-bundle actual-Wasm integration. They verify identical starts,
+isolated live memory, all-snapshot command-prefix replay and final pixels,
+512-step limits, sector metadata, residual/tied/silent readouts, same-time
+profile comparison, immutable completed exports, repeated lens changes and
+delayed/missing/rejected engines. Plot/metric checks are implementation evidence,
+not biological validation or browser visual proof. See
+[`../sim/EXPERIMENTS.md`](../sim/EXPERIMENTS.md).
+
 Actual browser execution was unavailable during this milestone. Browser visual
 and device-interaction QA remains open and is not inferred from these tests.
 
@@ -97,7 +109,8 @@ model metadata and full MIT notice. Both generation scripts reject optimized
 Python so integrity assertions cannot silently disappear. If SciPy is present,
 two optional provenance tests rerun MAT extraction, require byte-identical
 CSV/nodes/manifest, and simulate Windows default newline translation. Otherwise
-those two checks are explicitly skipped. All eight tests pass with SciPy.
+those two checks are explicitly skipped. Nine tests run with SciPy, including
+the readout-metadata guard distinguishing a missing integer peak from silence.
 
 The numerical tests check all eight cue sectors, duplicate-sector averaging,
 quiescence, cue-off decay, deterministic bounded rates, invalid input rejection

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import importlib.util
 import json
 import re
 from collections import Counter
@@ -21,6 +22,9 @@ from urllib.parse import urlparse
 
 PALETTE = ((8, 10, 9), (54, 69, 59), (218, 231, 211),
            (135, 184, 122), (184, 122, 135), (242, 210, 94))
+_wasm_spec = importlib.util.spec_from_file_location('fly_live_wasm_builder', Path(__file__).with_name('build_live_wasm.py'))
+wasm_builder = importlib.util.module_from_spec(_wasm_spec)
+_wasm_spec.loader.exec_module(wasm_builder)
 
 
 def load_anatomy_data(path: Path) -> dict:
@@ -109,13 +113,13 @@ def load_anatomy_data(path: Path) -> dict:
     return value
 
 
-def load_model_metadata(path: Path) -> list[dict]:
+def load_model_metadata(path: Path, source_bytes: bytes | None = None) -> list[dict]:
     """Validate bounded descriptive metadata; connectivity comes from C only.
 
     Citation links are optional user navigation, never loaded resources. This
     validates presentation contracts, not the scientific truth of a source.
     """
-    document = json.loads(path.read_text(encoding='utf-8'))
+    document = json.loads((path.read_bytes() if source_bytes is None else source_bytes).decode('utf-8'))
     models = document.get('models') if isinstance(document, dict) else None
     if not isinstance(models, list) or not 1 <= len(models) <= 8:
         raise ValueError('invalid model metadata list')
@@ -179,26 +183,37 @@ def frame_png(runs: list[list[int]]) -> bytes:
             + chunk(b'IDAT', zlib.compress(rows, 9)) + chunk(b'IEND', b''))
 
 
-def build(exporter: Path, output: Path, wasm: Path | None = None) -> None:
+def build(exporter: Path, output: Path, wasm: Path | None = None, node: str = 'node') -> None:
+    # Attribute only a verified snapshot of the complete module/manifest pair.
+    # Reject missing/stale provenance before producing any output or trace.
+    live_artifact = wasm_builder.verified_artifact(wasm, node) if wasm is not None else None
+    model_path = Path(__file__).parents[1] / 'sim' / 'circuit_models.json'
+    model_bytes = model_path.read_bytes()
+    models = load_model_metadata(model_path, model_bytes)
+    if live_artifact is not None and hashlib.sha256(model_bytes).hexdigest() != live_artifact[1]['source_sha256']['sim/circuit_models.json']:
+        raise ValueError('Model metadata source identity changed after WebAssembly validation; rebuild and retry.')
     # Reserve before invoking the exporter; never overwrite an existing capture.
     output.mkdir(parents=True, exist_ok=False)
     raw = subprocess.run([str(exporter.resolve())], check=True, capture_output=True).stdout
     data = json.loads(raw)
     if data.get('schema') != 1 or data.get('scope') != 'host-only' or data.get('hardware_verified') is not False:
         raise ValueError('unsupported or misleading trace contract')
-    data['models'] = load_model_metadata(Path(__file__).parents[1] / 'sim' / 'circuit_models.json')
+    data['models'] = models
     data['anatomy'] = load_anatomy_data(Path(__file__).parents[1] / 'sim' / 'data' / 'hulse2021' /
                                       'hulse2021_er4m_epg_anatomy.json')
     (output / 'trace.json').write_bytes(raw)
-    if wasm is not None:
-        module = wasm.read_bytes()
-        if not module.startswith(b'\x00asm\x01\x00\x00\x00') or len(module) > 4 * 1024 * 1024:
-            raise ValueError('invalid WebAssembly module header or size')
+    if live_artifact is not None:
+        module, manifest, manifest_sha256 = live_artifact
         data['live_wasm'] = base64.b64encode(module).decode('ascii')
         data['live_wasm_sha256'] = hashlib.sha256(module).hexdigest()
+        data['live_wasm_manifest'] = manifest
+        data['live_wasm_manifest_sha256'] = manifest_sha256
     for scenario in data['scenarios']:
         for frame in scenario['frames']:
             frame['image'] = 'data:image/png;base64,' + base64.b64encode(frame_png(frame.pop('pixels'))).decode('ascii')
+    experiment_protocol_bytes = Path(__file__).with_name('interaction_lab_experiment_protocol.js').read_bytes()
+    experiment_protocol = experiment_protocol_bytes.decode('utf-8')
+    data['experiment_protocol_sha256'] = hashlib.sha256(experiment_protocol_bytes).hexdigest()
     payload = json.dumps(data, separators=(',', ':')).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     template = Path(__file__).with_name('interaction_lab.html').read_text(encoding='utf-8')
     if template.count('/*__LAB_DATA__*/') != 1:
@@ -212,9 +227,16 @@ def build(exporter: Path, output: Path, wasm: Path | None = None) -> None:
     anatomy_script = Path(__file__).with_name('interaction_lab_anatomy.js').read_text(encoding='utf-8')
     if template.count('/*__ANATOMY_SCRIPT__*/') != 1 or '</script' in anatomy_script.lower():
         raise ValueError('invalid anatomy script template')
+    if template.count('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/') != 1 or '</script' in experiment_protocol.lower():
+        raise ValueError('invalid experiment protocol script template')
+    experiments_script = Path(__file__).with_name('interaction_lab_experiments.js').read_text(encoding='utf-8')
+    if template.count('/*__EXPERIMENTS_SCRIPT__*/') != 1 or '</script' in experiments_script.lower():
+        raise ValueError('invalid experiments script template')
     (output / 'index.html').write_text(template.replace('/*__LAB_DATA__*/', payload)
                                       .replace('/*__CIRCUIT_SCRIPT__*/', circuit_script)
                                       .replace('/*__ANATOMY_SCRIPT__*/', anatomy_script)
+                                      .replace('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/', experiment_protocol)
+                                      .replace('/*__EXPERIMENTS_SCRIPT__*/', experiments_script)
                                       .replace('/*__LIVE_SCRIPT__*/', live_script), encoding='utf-8')
     files = [output / 'index.html', output / 'trace.json']
     (output / 'SHA256SUMS').write_text(''.join(
@@ -225,11 +247,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--exporter', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True, help='new directory; existing captures are never replaced')
-    parser.add_argument('--wasm', type=Path, help='optional compiled real-C host bridge for the interactive sandbox')
+    parser.add_argument('--wasm', type=Path, help='optional real-C bridge; requires matching adjacent .wasm.json manifest')
+    parser.add_argument('--node', default='node', help='Node executable for bounded validation of the exact embedded Wasm')
     args = parser.parse_args()
     try:
-        build(args.exporter, args.output, args.wasm)
-    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+        build(args.exporter, args.output, args.wasm, args.node)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         parser.exit(2, f'lab build failed: {error}\n')
     print(f'Open {args.output / "index.html"} in a browser. Offline host model only.')
     return 0
