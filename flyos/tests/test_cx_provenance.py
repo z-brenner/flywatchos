@@ -52,6 +52,14 @@ class Provenance(unittest.TestCase):
         self.assertIn('not the paper', ' '.join(model['approximations']).lower())
         self.assertEqual(model['gain'], 0.01)
 
+    def test_readout_metadata_does_not_equate_missing_peak_with_exact_silence(self):
+        # Real-Wasm protocol tests exercise peak=-1 with E-PG raw sum=2.
+        # Exported model metadata must not contradict that measured behavior.
+        model = json.loads((ROOT / 'sim/circuit_models.json').read_text())['models'][1]
+        self.assertNotIn('-1 means no E-PG activity', model['readout'])
+        self.assertIn('residual', model['readout'])
+        self.assertIn('integer', model['readout'])
+
     def test_tampered_source_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary) / 'data'

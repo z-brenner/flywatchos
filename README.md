@@ -201,6 +201,15 @@ specify neural signs or efficacy, and unprovided pairs are not evidence of
 absence. This fragment has no simulated activity and is not a whole brain.
 See [data provenance and limitations](flyos/sim/data/hulse2021/README.md).
 
+Choose **Paired experiments** to compare two identically initialized CX60
+instances. Shift the cue, remove and restore it, or add synthetic P-EN A/B
+drive while an untouched control runs alongside. Inspect aligned activity
+profiles and trajectories, scrub the intervention/recovery phases, and export
+the exact commands. These experiments expose the current adaptation's limits:
+cue loss with zero P-EN drive decays to silence, while drive can alter activity
+without moving the coarse strongest-sector readout. See the
+[protocols, measurements and published-model comparison](flyos/sim/EXPERIMENTS.md).
+
 After the host build, generate a replay-only bundle:
 
 ```sh
@@ -264,6 +273,7 @@ separate validation.
 - [x] Add published CX60 topology, inspectable connections and a circuit observatory
 - [x] Inspect measured ER4m↔EPG body IDs and directed EB synapse counts
 - [x] Add pinned public-only checks with read-only GitHub Actions permissions
+- [x] Compare reproducible CX60 cue/drive interventions against identical-start controls
 - [ ] Prove target storage ownership and safe redraw context
 - [ ] Verify complete sequence ownership on hardware
 - [ ] Bind safe heart-rate, motion, and charging observations

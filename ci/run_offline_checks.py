@@ -58,11 +58,14 @@ def main() -> None:
         [python, '-B', 'flyos/tools/generate_cx_data.py', '--check'],
         [python, '-B', 'flyos/tools/build_live_wasm.py', '--output', wasm],
         ['node', 'flyos/tests/test_live_wasm.cjs', wasm, str(build / 'flyos-live-bridge-trace')],
+        ['node', 'flyos/tests/test_experiment_protocol.cjs', wasm],
         [python, '-B', 'flyos/tools/build_interaction_lab.py', '--exporter',
          str(build / 'flyos-interaction-exporter'), '--wasm', wasm, '--output', bundle],
         ['node', 'flyos/tests/test_interaction_lab_ui.cjs', str(Path(bundle) / 'index.html'), jsdom],
         ['node', 'flyos/tests/test_interaction_lab_circuit.cjs', jsdom],
         ['node', 'flyos/tests/test_interaction_lab_anatomy.cjs', jsdom],
+        ['node', 'flyos/tests/test_interaction_lab_experiments.cjs', jsdom],
+        ['node', 'flyos/tests/test_experiment_bundle.cjs', str(Path(bundle) / 'index.html'), jsdom],
         [python, '-B', '-m', 'unittest', 'discover', '-s', 'tools/garmin-firmware/tests', '-v'],
     ]
     run_commands(commands, ROOT)

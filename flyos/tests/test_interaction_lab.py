@@ -20,6 +20,22 @@ builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 
 class InteractionLabTests(unittest.TestCase):
+    def test_builder_embeds_identified_experiment_protocol(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / 'lab'
+            subprocess.run([sys.executable, str(BUILDER), '--exporter', str(EXPORTER),
+                            '--output', str(output)], check=True, capture_output=True)
+            html = (output / 'index.html').read_text()
+            payload = html.split('<script id="lab-data" type="application/json">', 1)[1].split('</script>', 1)[0]
+            data = json.loads(payload)
+            self.assertIsInstance(data.get('experiment_protocol_sha256'), str,
+                                  'the paired experiment implementation must be identified')
+            script = BUILDER.with_name('interaction_lab_experiment_protocol.js').read_bytes()
+            self.assertEqual(data['experiment_protocol_sha256'], hashlib.sha256(script).hexdigest())
+            self.assertIn('id="experiments-mode"', html)
+            self.assertNotIn('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/', html)
+            self.assertNotIn('/*__EXPERIMENTS_SCRIPT__*/', html)
+
     def test_anatomy_metadata_rejects_ambiguous_or_false_counts(self):
         nodes = [dict(body_id='1001', **{'class': 'EPG'}, instance='EPG_a'),
                  dict(body_id='1002', **{'class': 'ER4m'}, instance='ER4m_a')]

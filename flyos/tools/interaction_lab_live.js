@@ -263,8 +263,10 @@ function liveUpdateModelControls(metadata) {
   $('model-description').textContent = metadata.description;
   $('model-basis').textContent = metadata.biological_basis;
 }
-function enterLive() {
+function enterLive(deliberate = true) {
   if (!labEngine || liveMode) return;
+  if (deliberate) userLensSelected = true;
+  leaveExperiments();
   leaveAnatomy();
   pause(); liveMode = true; pause();
   $('live-controls').hidden = false;
@@ -363,7 +365,7 @@ window.addEventListener('blur',()=>{if(liveMode){pause();liveReleaseAll(false);}
 
 async function initializeLive() {
   if (!data.live_wasm) {
-    $('live-status').textContent='Replay bundle. Live engine was not included.'; return;
+    $('live-status').textContent='Replay bundle. Live engine was not included.'; experimentsRefreshAvailability(); return;
   }
   try {
     const bytes=Uint8Array.from(atob(data.live_wasm),c=>c.charCodeAt(0));
@@ -387,10 +389,14 @@ async function initializeLive() {
     // command and cannot affect the following explicit session reset.
     labEngine.fly_lab_reset(0);
     liveReadTopology();
+    labModule=loaded.module;
+    experimentsRefreshAvailability();
     $('live-mode').disabled=false;
     $('live-status').textContent='Ready. Real C → WebAssembly. No server.';
-    if (!anatomyMode) enterLive();
+    if (!userLensSelected && !anatomyMode && !experimentsMode) enterLive(false);
   } catch(error) {
+    labModule=null;
+    experimentsRefreshAvailability();
     $('live-status').textContent='Live engine unavailable. Replays still work.';
     $('live-status').title=error.message;
   }

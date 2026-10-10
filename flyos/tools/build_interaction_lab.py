@@ -199,6 +199,9 @@ def build(exporter: Path, output: Path, wasm: Path | None = None) -> None:
     for scenario in data['scenarios']:
         for frame in scenario['frames']:
             frame['image'] = 'data:image/png;base64,' + base64.b64encode(frame_png(frame.pop('pixels'))).decode('ascii')
+    experiment_protocol_bytes = Path(__file__).with_name('interaction_lab_experiment_protocol.js').read_bytes()
+    experiment_protocol = experiment_protocol_bytes.decode('utf-8')
+    data['experiment_protocol_sha256'] = hashlib.sha256(experiment_protocol_bytes).hexdigest()
     payload = json.dumps(data, separators=(',', ':')).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     template = Path(__file__).with_name('interaction_lab.html').read_text(encoding='utf-8')
     if template.count('/*__LAB_DATA__*/') != 1:
@@ -212,9 +215,16 @@ def build(exporter: Path, output: Path, wasm: Path | None = None) -> None:
     anatomy_script = Path(__file__).with_name('interaction_lab_anatomy.js').read_text(encoding='utf-8')
     if template.count('/*__ANATOMY_SCRIPT__*/') != 1 or '</script' in anatomy_script.lower():
         raise ValueError('invalid anatomy script template')
+    if template.count('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/') != 1 or '</script' in experiment_protocol.lower():
+        raise ValueError('invalid experiment protocol script template')
+    experiments_script = Path(__file__).with_name('interaction_lab_experiments.js').read_text(encoding='utf-8')
+    if template.count('/*__EXPERIMENTS_SCRIPT__*/') != 1 or '</script' in experiments_script.lower():
+        raise ValueError('invalid experiments script template')
     (output / 'index.html').write_text(template.replace('/*__LAB_DATA__*/', payload)
                                       .replace('/*__CIRCUIT_SCRIPT__*/', circuit_script)
                                       .replace('/*__ANATOMY_SCRIPT__*/', anatomy_script)
+                                      .replace('/*__EXPERIMENT_PROTOCOL_SCRIPT__*/', experiment_protocol)
+                                      .replace('/*__EXPERIMENTS_SCRIPT__*/', experiments_script)
                                       .replace('/*__LIVE_SCRIPT__*/', live_script), encoding='utf-8')
     files = [output / 'index.html', output / 'trace.json']
     (output / 'SHA256SUMS').write_text(''.join(

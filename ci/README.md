@@ -41,6 +41,7 @@ individual CTest tests also have a three-minute limit.
 - CX60 source/table checks and independent MAT re-extraction with SciPy required
 - A real import-free C/WebAssembly build and native/Wasm differential checks
 - A self-contained live bundle and all jsdom state/circuit/anatomy suites
+- Real-Wasm paired-protocol replay and full-bundle experiment lifecycle checks
 - Complete public firmware-tool unittest discovery with synthetic inputs
 - Runner regressions for stop-on-failure, timeout and public-only guards
 

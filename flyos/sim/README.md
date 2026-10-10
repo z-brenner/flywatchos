@@ -212,3 +212,18 @@ or filtered-out pair must not be interpreted as an anatomical zero. The
 static export retains exact string body IDs, source attribution and explicit
 filter scope, with no activation frames. Read the [source data contract](data/hulse2021/README.md)
 for byte hashes, extraction rules, CC BY 4.0 attribution and limitations.
+
+## Paired perturbation experiments
+
+The experiment lens runs two isolated instances of the same real C/Wasm
+module, with identical reset and fixed warm-up. A constant-input control is
+paired with a bounded cue-shift, cue-loss or cue-plus-P-EN-drive intervention,
+then both return to the original inputs. It does not modify CX60 dynamics or
+advance the live specimen. Raw states, exact commands and descriptive metrics
+travel in the export. All phases use abstract C steps, not measured time.
+
+The [experiment contract](EXPERIMENTS.md) explains duplicate-normalized sector
+profiles, coarse-peak ties, residual activity below the readout's integer
+resolution, exact silence and fixed-point recovery differences. The comparison
+is against the evolving same-time control, not an assumed equilibrium. This
+is an implementation assay, not independent fly data or biological validation.

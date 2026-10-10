@@ -882,7 +882,7 @@
       "gain": 0.01,
       "rounding": "round(published_signed_strength*1024/100), nearest with half away from zero",
       "dynamics": "r_next=floor((3*r+clamp(drive+trunc(sum(weight_q*r)/1024),0,16383))/4); synchronous updates; abstract time.",
-      "readout": "Strongest mean E-PG sector, 45-degree resolution; duplicate 0-degree units are averaged. Lowest-angle sector wins ties. -1 means no E-PG activity. Not a calibrated compass.",
+      "readout": "Strongest integer-truncated mean E-PG sector, 45-degree resolution; duplicate 0-degree units are averaged. Lowest-angle sector wins positive ties. -1 means no positive integer sector mean; residual raw E-PG activity may remain below this resolution. Exact silence requires all raw E-PG activations to be zero. Not a population-vector heading or calibrated compass.",
       "stimulus": {
         "angle_degrees": [
           0,
