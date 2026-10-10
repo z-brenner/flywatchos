@@ -196,3 +196,19 @@ Connectivity getters expose the actual C graph and source strengths. JavaScript
 only lays out and inspects those values; it does not reimplement the dynamics
 or fabricate links. [`CX60.md`](CX60.md) documents every biological assumption,
 source, equation, coefficient, input range and readout limitation.
+
+## Measured anatomy lens
+
+The page also embeds a static ER4m↔EPG cross-class projection from the Hulse
+2021 hemibrain analysis tables. It contains 56 actual body IDs, 762 directed
+supplied pairs and 16,774 EB synapses. It is separate from both C models:
+entering the lens pauses playback and releases held controls, and cell search
+or pair filtering never steps a network. It works without WebAssembly.
+
+Arrows show supplied direction; counts are unsigned ROI synapse counts, not
+fitted weights or efficacy. All-cell rings are schematic rather than physical
+geometry. Within-class and external connections are not supplied. A missing
+or filtered-out pair must not be interpreted as an anatomical zero. The
+static export retains exact string body IDs, source attribution and explicit
+filter scope, with no activation frames. Read the [source data contract](data/hulse2021/README.md)
+for byte hashes, extraction rules, CC BY 4.0 attribution and limitations.

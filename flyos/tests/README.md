@@ -11,7 +11,7 @@ ctest --test-dir flyos/build --output-on-failure
 The host suite now includes the original model/renderer/persistence tests,
 input/redraw policy, bounded synthetic view classification, live bridge,
 standalone bundle checks, fail-closed WebAssembly-builder checks, CX60 dynamics
-and pinned topology/provenance checks (14 CTest targets). Some
+and pinned topology/anatomy provenance checks (15 CTest targets). Some
 fake-executable build-failure tests require POSIX/Node and report explicit skips
 when unavailable. No test here supplies proprietary firmware or accesses a watch.
 
@@ -63,6 +63,7 @@ location, not systemwide:
 npm install --prefix flyos/build/ui-tests --no-audit --no-fund jsdom@26.1.0
 node flyos/tests/test_interaction_lab_ui.cjs flyos/build/live-lab/index.html flyos/build/ui-tests/node_modules/jsdom
 node flyos/tests/test_interaction_lab_circuit.cjs flyos/build/ui-tests/node_modules/jsdom
+node flyos/tests/test_interaction_lab_anatomy.cjs flyos/build/ui-tests/node_modules/jsdom
 ```
 
 The test uses the real embedded WebAssembly and a DOM implementation with
@@ -73,6 +74,12 @@ input validation, bounded history, scrubbing, model-switch isolation, circuit
 stimuli, unit/pathway inspection, license/source presentation, and exact
 exported-command replay for both models. It does not establish browser
 layout, canvas appearance, mobile responsiveness or physical pointer capture.
+
+The separate anatomy suite uses a small synthetic fixture to check body-ID
+search, directed pair counts, reciprocal inspection, honest filtered totals,
+keyboard focus, metadata safety and static export. Full-bundle integration
+checks the measured dataset and transitions between live, anatomy and replay
+views without allowing anatomy navigation to step the C model.
 
 Actual browser execution was unavailable during this milestone. Browser visual
 and device-interaction QA remains open and is not inferred from these tests.
@@ -96,3 +103,21 @@ The numerical tests check all eight cue sectors, duplicate-sector averaging,
 quiescence, cue-off decay, deterministic bounded rates, invalid input rejection
 and model padding. These are implementation checks, not measured behavioral
 validation. See [`../sim/CX60.md`](../sim/CX60.md).
+
+```sh
+python flyos/tools/generate_hulse_data.py --check
+python flyos/tests/test_hulse_provenance.py
+```
+
+The anatomy checks decompress the byte-pinned public source tables and
+independently regenerate cell IDs, directed counts, metadata and attribution.
+They do not infer missing connections, synaptic signs, physical geometry or
+dynamics. See the [source contract](../sim/data/hulse2021/README.md).
+
+## Complete public-only check
+
+[`../../ci/README.md`](../../ci/README.md) documents the pinned dependencies
+and one-command aggregate runner used by GitHub Actions. SciPy re-extraction
+is mandatory there, and missing private firmware/platform checks remain
+explicit skips. The runner refuses known private-input locations and does not
+build, package, stage or flash firmware.

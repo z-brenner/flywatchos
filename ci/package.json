@@ -1,0 +1,9 @@
+{
+  "name": "flywatchos-offline-checks",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned DOM dependencies for host-only offline checks",
+  "dependencies": {
+    "jsdom": "26.1.0"
+  }
+}

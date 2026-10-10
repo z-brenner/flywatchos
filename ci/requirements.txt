@@ -1,0 +1,6 @@
+# Python 3.12; install into an isolated environment. No target toolchain.
+-r ../tools/garmin-firmware/tests/requirements.txt
+cmake==4.4.4
+ziglang==0.14.1
+numpy==2.3.5
+scipy==1.16.3
