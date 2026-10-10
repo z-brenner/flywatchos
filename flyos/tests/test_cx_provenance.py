@@ -86,4 +86,27 @@ class Provenance(unittest.TestCase):
                          'pisokas2020_cx60_provenance.json'):
                 self.assertEqual((DATA / name).read_bytes(), (folder / name).read_bytes(), name)
 
+    @unittest.skipUnless(importlib.util.find_spec('scipy'), 'optional MAT re-derivation requires SciPy')
+    def test_json_rederivation_is_stable_with_windows_default_newlines(self):
+        # Simulate Path.write_text's Windows default without requiring a
+        # Windows runner. Explicit newline arguments must override the default.
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / 'data'
+            shutil.copytree(DATA, folder)
+            code = """
+from pathlib import Path
+import runpy, sys
+original = Path.write_text
+def windows_write_text(self, data, *args, **kwargs):
+    kwargs.setdefault('newline', '\\r\\n')
+    return original(self, data, *args, **kwargs)
+Path.write_text = windows_write_text
+runpy.run_path(sys.argv[1], run_name='__main__')
+"""
+            result = subprocess.run([sys.executable, '-c', code, str(folder / 'export_pisokas.py')],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for name in ('pisokas2020_cx60_nodes.json', 'pisokas2020_cx60_provenance.json'):
+                self.assertEqual((DATA / name).read_bytes(), (folder / name).read_bytes(), name)
+
 if __name__ == '__main__': unittest.main()

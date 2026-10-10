@@ -88,8 +88,9 @@ These checks require no network. They pin the original MAT and source hashes,
 all 326 generated edges, orientation sentinels, category/strength mapping,
 model metadata and full MIT notice. Both generation scripts reject optimized
 Python so integrity assertions cannot silently disappear. If SciPy is present,
-a seventh provenance test independently reruns MAT extraction and requires
-byte-identical CSV/nodes/manifest; otherwise that test is explicitly skipped.
+two optional provenance tests rerun MAT extraction, require byte-identical
+CSV/nodes/manifest, and simulate Windows default newline translation. Otherwise
+those two checks are explicitly skipped. All eight tests pass with SciPy.
 
 The numerical tests check all eight cue sectors, duplicate-sector averaging,
 quiescence, cue-off decay, deterministic bounded rates, invalid input rejection

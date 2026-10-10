@@ -34,7 +34,7 @@ for target in range(60):
 assert len(edges)==326
 with (ROOT/'pisokas2020_cx60_edges.csv').open('w',newline='') as f:
     w=csv.DictWriter(f,fieldnames=list(edges[0]));w.writeheader();w.writerows(edges)
-(ROOT/'pisokas2020_cx60_nodes.json').write_text(json.dumps(nodes,indent=2)+'\n')
+(ROOT/'pisokas2020_cx60_nodes.json').write_text(json.dumps(nodes,indent=2)+'\n',encoding='utf-8',newline='\n')
 metadata={
  'name':'Pisokas2020 Drosophila heading circuit: 60 connected representative model units',
  'paper':'https://doi.org/10.7554/eLife.53985',
@@ -56,5 +56,5 @@ metadata={
 }
 for fn in ['pisokas2020_cx60_edges.csv','pisokas2020_cx60_nodes.json',NAME,'collect_stats_long_run.m','PBexperimentModified.m','flyLI2.m','flyLIF2.m','LICENSE']:
  b=(ROOT/fn).read_bytes();metadata['files'][fn]={'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
-(ROOT/'pisokas2020_cx60_provenance.json').write_text(json.dumps(metadata,indent=2)+'\n')
+(ROOT/'pisokas2020_cx60_provenance.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8',newline='\n')
 print(json.dumps({'active_units':60,'edges':len(edges),'files':metadata['files']},indent=2))
