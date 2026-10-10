@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -14,9 +16,8 @@ import gcd_restore_candidate_lab  # noqa: E402
 
 class GcdRestoreCandidateLabTests(unittest.TestCase):
     def test_builds_exact_payload_only_restore_hypothesis(self):
-        source = Path("artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD")
-        if not source.exists():
-            self.skipTest("pinned official package unavailable")
+        source = Path(__file__).resolve().parents[3] / Path("artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD")
+        require_private_files(source)
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "candidate.gcd"
             report = gcd_restore_candidate_lab.build_candidate(source, output)
@@ -41,9 +42,8 @@ class GcdRestoreCandidateLabTests(unittest.TestCase):
         self.assertEqual(report["output_sha256"], output_hash)
 
     def test_can_match_only_main_descriptor_to_13_69(self):
-        source = Path("artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD")
-        if not source.exists():
-            self.skipTest("pinned official package unavailable")
+        source = Path(__file__).resolve().parents[3] / Path("artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD")
+        require_private_files(source)
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "candidate.gcd"
             report = gcd_restore_candidate_lab.build_candidate(

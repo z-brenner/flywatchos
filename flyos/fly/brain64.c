@@ -234,3 +234,29 @@ uint8_t fly_brain64_level(const FlyBrain64 *brain, unsigned neuron) {
 uint8_t fly_brain64_state(const FlyBrain64 *brain) {
     return brain->state;
 }
+
+#ifdef FLY_NEURAL_SPECIMEN_HOST_PREVIEW
+uint32_t fly_brain64_edge_count(void) {
+    return (uint32_t)(sizeof(fly_brain64_edges) / sizeof(fly_brain64_edges[0]));
+}
+static const FlyBrain64Edge *fly_brain64_edge(int edge) {
+    return edge < 0 || (uint32_t)edge >= fly_brain64_edge_count() ?
+           0 : &fly_brain64_edges[edge];
+}
+int fly_brain64_edge_source(int edge) {
+    const FlyBrain64Edge *value = fly_brain64_edge(edge);
+    return value ? value->source : -1;
+}
+int fly_brain64_edge_target(int edge) {
+    const FlyBrain64Edge *value = fly_brain64_edge(edge);
+    return value ? value->target : -1;
+}
+int fly_brain64_edge_denominator(int edge) {
+    const FlyBrain64Edge *value = fly_brain64_edge(edge);
+    return value ? (int)(1u << value->shift) : 0;
+}
+int fly_brain64_edge_sign(int edge) {
+    const FlyBrain64Edge *value = fly_brain64_edge(edge);
+    return value ? (value->positive ? 1 : -1) : 0;
+}
+#endif

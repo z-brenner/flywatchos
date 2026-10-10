@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -103,15 +105,14 @@ class GcdCandidateVerifyTests(unittest.TestCase):
         self.assertFalse(report["gates"]["outer_checkpoints_valid"])
 
     def test_exact_visible_proof_profile_accepts_only_pinned_candidate(self):
-        official_path = Path(
+        official_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         )
-        candidate_path = Path(
+        candidate_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/quarantine/"
             "Forerunner245_1370_fly-visible.gcd.analysis-only.DO_NOT_INSTALL"
         )
-        if not official_path.exists() or not candidate_path.exists():
-            self.skipTest("pinned visible-proof artifacts are unavailable")
+        require_private_files(official_path, candidate_path)
         report = gcd_candidate_verify.verify_packages(
             official_path,
             candidate_path,
@@ -122,14 +123,13 @@ class GcdCandidateVerifyTests(unittest.TestCase):
         self.assertTrue(all(report["profile"]["checks"].values()))
 
     def test_exact_visible_proof_profile_rejects_another_valid_main_patch(self):
-        official_path = Path(
+        official_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         )
-        candidate_path = Path(
+        candidate_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/mutation-lab/Forerunner245_1370_payload-lab.GCD"
         )
-        if not official_path.exists() or not candidate_path.exists():
-            self.skipTest("pinned firmware-lab artifacts are unavailable")
+        require_private_files(official_path, candidate_path)
         report = gcd_candidate_verify.verify_packages(
             official_path,
             candidate_path,
@@ -168,15 +168,14 @@ class GcdCandidateVerifyTests(unittest.TestCase):
         )
 
     def test_exact_restore_hypothesis_profile_accepts_only_pinned_candidate(self):
-        official_path = Path(
+        official_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         )
-        candidate_path = Path(
+        candidate_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/quarantine/"
             "Forerunner245_1370_fly-visible-restore1369.gcd.analysis-only.DO_NOT_INSTALL"
         )
-        if not official_path.exists() or not candidate_path.exists():
-            self.skipTest("pinned restore-hypothesis artifacts are unavailable")
+        require_private_files(official_path, candidate_path)
         report = gcd_candidate_verify.verify_packages(
             official_path,
             candidate_path,
@@ -196,15 +195,14 @@ class GcdCandidateVerifyTests(unittest.TestCase):
         )
 
     def test_exact_matched_13_69_profile_accepts_only_pinned_candidate(self):
-        official_path = Path(
+        official_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         )
-        candidate_path = Path(
+        candidate_path = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/quarantine/"
             "Forerunner245_1369-matched-fly-visible.gcd.analysis-only.DO_NOT_INSTALL"
         )
-        if not official_path.exists() or not candidate_path.exists():
-            self.skipTest("pinned matched-version artifact is unavailable")
+        require_private_files(official_path, candidate_path)
         report = gcd_candidate_verify.verify_packages(
             official_path,
             candidate_path,

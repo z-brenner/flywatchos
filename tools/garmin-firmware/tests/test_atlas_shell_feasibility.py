@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools" / "garmin-firmware"))
 import atlas_shell_feasibility as feasibility
@@ -14,6 +16,7 @@ EVIDENCE_DIR = Path(os.environ.get("FLYOS_ATLAS_EVIDENCE_DIR", ROOT / "artifacts
 
 class FeasibilityTests(unittest.TestCase):
     def test_pinned_evidence_blocks_every_unproved_gate(self):
+        require_private_files(ROOT / "artifacts/firmware/analysis/Forerunner245_1370_GUPDATE/stream_01_fw_all_bin.bin")
         report = feasibility.evaluate_feasibility(ROOT, evidence_dir=EVIDENCE_DIR)
         self.assertEqual([
             "five_key_halfwords", "tri_state_view_classifier", "observed_update_prompt_non_home",

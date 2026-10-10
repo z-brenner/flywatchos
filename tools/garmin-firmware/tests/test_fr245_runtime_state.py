@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 ANALYZER = TOOLS / "fr245_runtime_state.py"
@@ -43,6 +45,7 @@ def load_analyzer():
 class RuntimeStateEvidenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(IMAGE, EXPECTED_OUTPUT)
         cls.analyzer = load_analyzer()
         cls.report = cls.analyzer.analyze(IMAGE)
 
@@ -110,22 +113,6 @@ class RuntimeStateEvidenceTests(unittest.TestCase):
                 "saturated": {"native_byte": "0x38", "rgb": "#FFAA00"},
             },
         )
-
-    def test_all_64_native_and_rgb_cube_values_round_trip(self):
-        components = (0x00, 0x55, 0xAA, 0xFF)
-        seen = set()
-        for red_level, red in enumerate(components):
-            for green_level, green in enumerate(components):
-                for blue_level, blue in enumerate(components):
-                    expected = (red_level << 4) | (green_level << 2) | blue_level
-                    native = self.analyzer.rgb_to_native(red, green, blue)
-                    self.assertEqual(native, expected)
-                    self.assertEqual(
-                        self.analyzer.native_to_rgb(native),
-                        (red, green, blue),
-                    )
-                    seen.add(native)
-        self.assertEqual(seen, set(range(64)))
 
     def test_palette_binary_evidence_addresses_slots_and_hashes_are_exact(self):
         evidence = self.report["target_palette_evidence"]
@@ -493,8 +480,30 @@ class RuntimeStateEvidenceTests(unittest.TestCase):
         self.assertEqual(stdout_text, expected)
         self.assertEqual(json.loads(stdout_text), self.report)
 
+
+class RuntimeStatePublicTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.analyzer = load_analyzer()
+
+    def test_all_64_native_and_rgb_cube_values_round_trip(self):
+        components = (0x00, 0x55, 0xAA, 0xFF)
+        seen = set()
+        for red_level, red in enumerate(components):
+            for green_level, green in enumerate(components):
+                for blue_level, blue in enumerate(components):
+                    expected = (red_level << 4) | (green_level << 2) | blue_level
+                    native = self.analyzer.rgb_to_native(red, green, blue)
+                    self.assertEqual(native, expected)
+                    self.assertEqual(
+                        self.analyzer.native_to_rgb(native),
+                        (red, green, blue),
+                    )
+                    seen.add(native)
+        self.assertEqual(seen, set(range(64)))
+
     def test_cli_rejects_all_output_destinations_before_writing(self):
-        original = IMAGE.read_bytes()
+        original = b"synthetic input preserved before argument rejection"
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             cases = [

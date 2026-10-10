@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 sys.path.insert(0, str(TOOLS))
@@ -14,6 +16,12 @@ import overlay_version_strategy as strategy  # noqa: E402
 class OverlayVersionStrategyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(
+            ROOT / "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD",
+            ROOT / "flyos/target/fr245_1370_overlay/build/hook.bin",
+            ROOT / "flyos/target/fr245_1370_overlay/build/overlay.bin",
+            ROOT / "artifacts/firmware/analysis/code-cave-overlay-xrefs-1370.txt",
+        )
         cls.official = (
             ROOT / "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         ).read_bytes()

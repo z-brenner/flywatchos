@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 
 
+from private_fixtures import require_private_files
+
 TOOL_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_DIR))
 
@@ -14,11 +16,10 @@ import gcd_payload_mutation_lab as mutation  # noqa: E402
 class FullImageValidatorTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        source = Path(
+        source = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD"
         )
-        if not source.exists():
-            raise unittest.SkipTest("pinned official 13.70 package is unavailable")
+        require_private_files(source)
         cls.source = source.read_bytes()
 
     def test_official_full_image_passes_confirmed_checks(self):
@@ -38,12 +39,13 @@ class FullImageValidatorTests(unittest.TestCase):
         self.assertEqual(report["main_stream"]["byte_sum_mod_256"], 1)
         self.assertFalse(report["confirmed_full_image_checks_pass"])
 
+
+class RepairedLabPackageIntegrationTests(unittest.TestCase):
     def test_repaired_lab_package_passes_confirmed_checks(self):
-        package = Path(
+        package = Path(__file__).resolve().parents[3] / Path(
             "artifacts/firmware/mutation-lab/Forerunner245_1370_payload-lab.GCD"
         )
-        if not package.exists():
-            self.skipTest("repaired offline package is unavailable")
+        require_private_files(package)
         report = validator.validate_bytes(package.read_bytes(), package.name)
         self.assertTrue(report["confirmed_full_image_checks_pass"])
         self.assertEqual(

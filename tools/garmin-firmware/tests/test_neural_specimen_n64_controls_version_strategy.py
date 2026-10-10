@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 sys.path.insert(0, str(TOOLS))
@@ -16,6 +18,11 @@ import neural_specimen_n64_controls_version_strategy as strategy  # noqa: E402
 class NeuralSpecimenN64ControlsVersionStrategyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(
+            ROOT / strategy.CONTROLS_DECISION_RELATIVE_PATH,
+            ROOT / strategy.BASE_DECISION_RELATIVE_PATH,
+            ROOT / "artifacts/firmware/originals/Forerunner245_1370_GUPDATE.GCD",
+        )
         cls.inputs = strategy.load_inputs(ROOT)
         cls.candidate, cls.restore, cls.report = strategy.construct_pair(ROOT)
 
@@ -29,21 +36,6 @@ class NeuralSpecimenN64ControlsVersionStrategyTests(unittest.TestCase):
         if len(matches) != 1:
             raise AssertionError(f"expected one stream 0x{record_id:04x}")
         return matches[0]
-
-    def test_monotonic_versions_and_analysis_only_names(self):
-        self.assertEqual(
-            (
-                strategy.PRIOR_CANDIDATE_VERSION,
-                strategy.PRIOR_RESTORE_VERSION,
-                strategy.CANDIDATE_VERSION,
-                strategy.RESTORE_VERSION,
-            ),
-            (1374, 1375, 1376, 1377),
-        )
-        self.assertTrue(strategy.CANDIDATE_FILENAME.endswith(strategy.REQUIRED_SUFFIX))
-        self.assertTrue(strategy.RESTORE_FILENAME.endswith(strategy.REQUIRED_SUFFIX))
-        self.assertIn("controls", strategy.CANDIDATE_FILENAME)
-        self.assertIn("controls", strategy.RESTORE_FILENAME)
 
     def test_manifest_and_four_segments_are_pinned(self):
         self.assertEqual(
@@ -220,6 +212,23 @@ class NeuralSpecimenN64ControlsVersionStrategyTests(unittest.TestCase):
             self.assertIn(
                 "explicitly blocked", (completed.stdout + completed.stderr).lower()
             )
+
+
+class NeuralSpecimenN64ControlsPublicSafetyTests(unittest.TestCase):
+    def test_monotonic_versions_and_analysis_only_names(self):
+        self.assertEqual(
+            (
+                strategy.PRIOR_CANDIDATE_VERSION,
+                strategy.PRIOR_RESTORE_VERSION,
+                strategy.CANDIDATE_VERSION,
+                strategy.RESTORE_VERSION,
+            ),
+            (1374, 1375, 1376, 1377),
+        )
+        self.assertTrue(strategy.CANDIDATE_FILENAME.endswith(strategy.REQUIRED_SUFFIX))
+        self.assertTrue(strategy.RESTORE_FILENAME.endswith(strategy.REQUIRED_SUFFIX))
+        self.assertIn("controls", strategy.CANDIDATE_FILENAME)
+        self.assertIn("controls", strategy.RESTORE_FILENAME)
 
 
 if __name__ == "__main__":

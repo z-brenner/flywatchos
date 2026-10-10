@@ -61,4 +61,14 @@ void fly_brain64_reconstruct(FlyBrain64 *brain, uint32_t identity_seed,
 uint8_t fly_brain64_level(const FlyBrain64 *brain, unsigned neuron);
 uint8_t fly_brain64_state(const FlyBrain64 *brain);
 
+/* Introspection exists only in host-preview builds. It does not change the
+ * target structs, dynamics, edge table, or target ABI. */
+#ifdef FLY_NEURAL_SPECIMEN_HOST_PREVIEW
+uint32_t fly_brain64_edge_count(void);
+int fly_brain64_edge_source(int edge);
+int fly_brain64_edge_target(int edge);
+int fly_brain64_edge_denominator(int edge);
+int fly_brain64_edge_sign(int edge);
+#endif
+
 #endif

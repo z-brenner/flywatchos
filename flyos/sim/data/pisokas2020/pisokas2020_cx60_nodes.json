@@ -1,0 +1,484 @@
+[
+  {
+    "index": 0,
+    "class": "P-EN",
+    "class_index": 0,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 0
+  },
+  {
+    "index": 1,
+    "class": "P-EN",
+    "class_index": 1,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 1
+  },
+  {
+    "index": 2,
+    "class": "P-EN",
+    "class_index": 2,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 2
+  },
+  {
+    "index": 3,
+    "class": "P-EN",
+    "class_index": 3,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 3
+  },
+  {
+    "index": 4,
+    "class": "P-EN",
+    "class_index": 4,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 4
+  },
+  {
+    "index": 5,
+    "class": "P-EN",
+    "class_index": 5,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 5
+  },
+  {
+    "index": 6,
+    "class": "P-EN",
+    "class_index": 6,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 6
+  },
+  {
+    "index": 7,
+    "class": "P-EN",
+    "class_index": 7,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 7
+  },
+  {
+    "index": 8,
+    "class": "P-EN",
+    "class_index": 8,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 0
+  },
+  {
+    "index": 9,
+    "class": "P-EN",
+    "class_index": 9,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 1
+  },
+  {
+    "index": 10,
+    "class": "P-EN",
+    "class_index": 10,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 2
+  },
+  {
+    "index": 11,
+    "class": "P-EN",
+    "class_index": 11,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 3
+  },
+  {
+    "index": 12,
+    "class": "P-EN",
+    "class_index": 12,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 4
+  },
+  {
+    "index": 13,
+    "class": "P-EN",
+    "class_index": 13,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 5
+  },
+  {
+    "index": 14,
+    "class": "P-EN",
+    "class_index": 14,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 6
+  },
+  {
+    "index": 15,
+    "class": "P-EN",
+    "class_index": 15,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 7
+  },
+  {
+    "index": 16,
+    "class": "P-EG",
+    "class_index": 0,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 0
+  },
+  {
+    "index": 17,
+    "class": "P-EG",
+    "class_index": 1,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 1
+  },
+  {
+    "index": 18,
+    "class": "P-EG",
+    "class_index": 2,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 2
+  },
+  {
+    "index": 19,
+    "class": "P-EG",
+    "class_index": 3,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 3
+  },
+  {
+    "index": 20,
+    "class": "P-EG",
+    "class_index": 4,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 4
+  },
+  {
+    "index": 21,
+    "class": "P-EG",
+    "class_index": 5,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 5
+  },
+  {
+    "index": 22,
+    "class": "P-EG",
+    "class_index": 6,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 6
+  },
+  {
+    "index": 23,
+    "class": "P-EG",
+    "class_index": 7,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 7
+  },
+  {
+    "index": 24,
+    "class": "P-EG",
+    "class_index": 8,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 8
+  },
+  {
+    "index": 25,
+    "class": "P-EG",
+    "class_index": 9,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 0
+  },
+  {
+    "index": 26,
+    "class": "P-EG",
+    "class_index": 10,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 1
+  },
+  {
+    "index": 27,
+    "class": "P-EG",
+    "class_index": 11,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 2
+  },
+  {
+    "index": 28,
+    "class": "P-EG",
+    "class_index": 12,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 3
+  },
+  {
+    "index": 29,
+    "class": "P-EG",
+    "class_index": 13,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 4
+  },
+  {
+    "index": 30,
+    "class": "P-EG",
+    "class_index": 14,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 5
+  },
+  {
+    "index": 31,
+    "class": "P-EG",
+    "class_index": 15,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 6
+  },
+  {
+    "index": 32,
+    "class": "P-EG",
+    "class_index": 16,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 7
+  },
+  {
+    "index": 33,
+    "class": "P-EG",
+    "class_index": 17,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 8
+  },
+  {
+    "index": 34,
+    "class": "E-PG",
+    "class_index": 0,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 0,
+    "cue_angle_degrees": 0
+  },
+  {
+    "index": 35,
+    "class": "E-PG",
+    "class_index": 1,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 1,
+    "cue_angle_degrees": 45
+  },
+  {
+    "index": 36,
+    "class": "E-PG",
+    "class_index": 2,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 2,
+    "cue_angle_degrees": 90
+  },
+  {
+    "index": 37,
+    "class": "E-PG",
+    "class_index": 3,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 3,
+    "cue_angle_degrees": 135
+  },
+  {
+    "index": 38,
+    "class": "E-PG",
+    "class_index": 4,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 4,
+    "cue_angle_degrees": 180
+  },
+  {
+    "index": 39,
+    "class": "E-PG",
+    "class_index": 5,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 5,
+    "cue_angle_degrees": 225
+  },
+  {
+    "index": 40,
+    "class": "E-PG",
+    "class_index": 6,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 6,
+    "cue_angle_degrees": 270
+  },
+  {
+    "index": 41,
+    "class": "E-PG",
+    "class_index": 7,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 7,
+    "cue_angle_degrees": 315
+  },
+  {
+    "index": 42,
+    "class": "E-PG",
+    "class_index": 8,
+    "unit_kind": "representative model population",
+    "half": "A",
+    "column_index": 8,
+    "cue_angle_degrees": 0
+  },
+  {
+    "index": 43,
+    "class": "E-PG",
+    "class_index": 9,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 0,
+    "cue_angle_degrees": 0
+  },
+  {
+    "index": 44,
+    "class": "E-PG",
+    "class_index": 10,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 1,
+    "cue_angle_degrees": 45
+  },
+  {
+    "index": 45,
+    "class": "E-PG",
+    "class_index": 11,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 2,
+    "cue_angle_degrees": 90
+  },
+  {
+    "index": 46,
+    "class": "E-PG",
+    "class_index": 12,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 3,
+    "cue_angle_degrees": 135
+  },
+  {
+    "index": 47,
+    "class": "E-PG",
+    "class_index": 13,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 4,
+    "cue_angle_degrees": 180
+  },
+  {
+    "index": 48,
+    "class": "E-PG",
+    "class_index": 14,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 5,
+    "cue_angle_degrees": 225
+  },
+  {
+    "index": 49,
+    "class": "E-PG",
+    "class_index": 15,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 6,
+    "cue_angle_degrees": 270
+  },
+  {
+    "index": 50,
+    "class": "E-PG",
+    "class_index": 16,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 7,
+    "cue_angle_degrees": 315
+  },
+  {
+    "index": 51,
+    "class": "E-PG",
+    "class_index": 17,
+    "unit_kind": "representative model population",
+    "half": "B",
+    "column_index": 8,
+    "cue_angle_degrees": 0
+  },
+  {
+    "index": 52,
+    "class": "Delta7",
+    "class_index": 0,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 53,
+    "class": "Delta7",
+    "class_index": 1,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 54,
+    "class": "Delta7",
+    "class_index": 2,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 55,
+    "class": "Delta7",
+    "class_index": 3,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 56,
+    "class": "Delta7",
+    "class_index": 4,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 57,
+    "class": "Delta7",
+    "class_index": 5,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 58,
+    "class": "Delta7",
+    "class_index": 6,
+    "unit_kind": "representative model population"
+  },
+  {
+    "index": 59,
+    "class": "Delta7",
+    "class_index": 7,
+    "unit_kind": "representative model population"
+  }
+]

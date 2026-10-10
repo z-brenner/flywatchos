@@ -1,0 +1,82 @@
+{
+  "name": "Pisokas2020 Drosophila heading circuit: 60 connected representative model units",
+  "paper": "https://doi.org/10.7554/eLife.53985",
+  "repository": "https://github.com/johnpi/eLife_Pisokas_Heinze_Webb_2019",
+  "source_commit": "dfb95dfeaad0da2df0f7f687846d4df44079a483",
+  "source_file": "Exp_Recurrent_PB_EB/connectivity_matrix_drosophila_mine_case_5_9cols_labels1.mat",
+  "source_sha256": "abfdcb2918e3637e41d4ba7b7438e512f545dac6553ce89d5cfddb49de044b12",
+  "source_license": "MIT; see LICENSE. Copyright (c) 2020 Kyobi S. Kakaria, Benjamin L. de Bivort and Ioannis Pisokas",
+  "upstream_shape": [
+    62,
+    62
+  ],
+  "active_units": 60,
+  "directed_edges": 326,
+  "orientation": "upstream matrix[target,source]; source driver transposes before calling simulator",
+  "strength_evidence": "collect_stats_long_run.m lines395-433; these are fitted MODEL strengths, not synapse counts",
+  "category_strengths": {
+    "1.0": 6.07203896674184,
+    "1.1": 47.9173822984772,
+    "-1.0": -35.6772759590409,
+    "-1.1": -19.3358579258735,
+    "3.0": 99.9680554605268
+  },
+  "class_counts": {
+    "P-EN": 16,
+    "P-EG": 18,
+    "E-PG": 18,
+    "Delta7": 8
+  },
+  "derivation": [
+    "Verify exact MAT SHA256",
+    "Read con_matrix",
+    "Discard only all-zero rows/columns60,61",
+    "Emit each nonzero as source=column,target=row",
+    "Map category labels through published parameter set",
+    "No pruning, random replacement, or invented neurons"
+  ],
+  "limitations": [
+    "Not an EM-derived individual-neuron connectome",
+    "Representative model units collapse multiple anatomical cells",
+    "Anatomical overlap motivated wiring; connection strengths were optimized",
+    "No measured fly membrane dynamics or real watch-sensor calibration",
+    "No whole-brain, consciousness, organism or biological-equivalence claim",
+    "Deterministic fixed-point rate adaptation is a new dynamics model unless equivalence is demonstrated"
+  ],
+  "cue_mapping": "EPG34..42 and43..51 each use [0,45,90,135,180,225,270,315,0] degrees from upstream cue code; model-relative, not compass calibrated",
+  "pen_half_convention": "A=0..7;B=8..15; upstream comments disagree on hemisphere naming; establish rotation sign empirically",
+  "files": {
+    "pisokas2020_cx60_edges.csv": {
+      "bytes": 9319,
+      "sha256": "b9066dd86199a76038eab7f288adf910a32525e2060460af06df1351d87245d0"
+    },
+    "pisokas2020_cx60_nodes.json": {
+      "bytes": 9839,
+      "sha256": "8e498d66dfd4d6432c20cd6194557ba0a7d8fe8f8c8d7dc477124b00c36df297"
+    },
+    "connectivity_matrix_drosophila_mine_case_5_9cols_labels1.mat": {
+      "bytes": 901,
+      "sha256": "abfdcb2918e3637e41d4ba7b7438e512f545dac6553ce89d5cfddb49de044b12"
+    },
+    "collect_stats_long_run.m": {
+      "bytes": 105329,
+      "sha256": "c24f14c2d6e98f29ba604f289337b3057815e68562edd7504f6d57643fd8e1a1"
+    },
+    "PBexperimentModified.m": {
+      "bytes": 20252,
+      "sha256": "13e71dcaf45550adfd9861ea9711c5afcec0834050700ae8c31fc185b8d62bfc"
+    },
+    "flyLI2.m": {
+      "bytes": 3656,
+      "sha256": "92adf312cab38bd012fa7d68a8aca1d38ff9639c8f095a6f9df755a7b488d0b0"
+    },
+    "flyLIF2.m": {
+      "bytes": 4197,
+      "sha256": "76a0828fad72bc5611096e836e10e2cecf3624629858589ee4b9f897ebe54431"
+    },
+    "LICENSE": {
+      "bytes": 1116,
+      "sha256": "5d57b788313bac36d1b33f2c1e24c1ae42707cc45bbc983ade7930b179f6abb1"
+    }
+  }
+}

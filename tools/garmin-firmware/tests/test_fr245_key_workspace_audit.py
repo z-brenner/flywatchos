@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from private_fixtures import require_private_files
+
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "tools" / "garmin-firmware"
 sys.path.insert(0, str(TOOLS))
@@ -12,6 +14,7 @@ import fr245_key_workspace_audit as audit
 
 class KeyWorkspaceTests(unittest.TestCase):
     def test_audited_accesses_do_not_promote_unknown_stock_aliases_to_proof(self):
+        require_private_files(ROOT / "artifacts/firmware/analysis/Forerunner245_1370_GUPDATE/stream_01_fw_all_bin.bin")
         report = audit.audit_key_workspace(ROOT)
         self.assertEqual(
             [0x1FFDBBFE, 0x1FFDBC36, 0x1FFDBC6E, 0x1FFDBCA6, 0x1FFDBCDE],

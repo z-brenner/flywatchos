@@ -28,3 +28,45 @@ The FR245 overlay targets require local, byte-pinned Garmin firmware evidence
 and an ARM toolchain. Those proprietary inputs and all generated update packages
 are intentionally excluded from this repository. The live N64 result is still
 an overlay inside GarminOS; it is not a standalone FlyOS boot.
+
+## Interactive replay lab
+
+```sh
+python flyos/tools/build_interaction_lab.py --exporter flyos/build/flyos-interaction-exporter --output flyos/build/interaction-lab
+```
+
+Run from the repository root after the build. On Windows, select the `.exe`
+path emitted by your generator (possibly under `Debug/`). Open the generated
+`index.html`; it contains all scripts, images, and scenario data and needs no
+server or network. The output directory must not already exist. `trace.json`
+and `SHA256SUMS` accompany the page for reproducibility.
+
+Nine scripted scenarios expose actual C-rendered neural frames, per-neuron
+telemetry, key ownership, short-tap pulses, and abstract detach redraw state.
+The page provides play/pause, speed, frame stepping/scrubbing, a neuron
+inspector, and per-scenario export. It starts paused and pauses when hidden.
+The host policy lives in `sim/` and is never linked into a watch target.
+Read [the model contract](sim/README.md) before interpreting its results.
+
+
+The optional live sandbox compiles `sim/live_bridge.c` with the same Brain64,
+renderer, and host ownership policy into import-free WebAssembly. Run
+`python flyos/tools/build_live_wasm.py` with Zig and Node available, then add
+`--wasm flyos/build/flyos-live.wasm` to the lab builder. The page offers held-key
+controls, motor-burst/movement/rest presets, synthetic sensors, pause/step,
+deterministic seed resets, and a bounded activity history. See
+[`tests/README.md`](tests/README.md) for reproducible compiler and Node tests.
+
+## Published circuit observatory
+
+The live lab also offers CX60: 60 representative populations and 326 directed
+connections from a pinned published fly heading model. A large schematic shows
+actual C activity, with keyboard-selectable units, incoming/outgoing pathway
+inspection and source strengths beside implemented Q10 coefficients. Synthetic
+landmark and P-EN A/B controls explore its simplified dynamics. The baseline
+Brain64, host policy and deterministic replays remain selectable.
+
+This is not an individual-neuron EM connectome or a whole fly brain. See
+[`sim/CX60.md`](sim/CX60.md) for source attribution, exact arithmetic, bounds,
+input conventions and the deliberately limited biological claims. Neither
+model is a new target candidate.

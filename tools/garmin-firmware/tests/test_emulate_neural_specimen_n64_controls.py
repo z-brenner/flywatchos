@@ -9,6 +9,8 @@ import tempfile
 import unittest
 
 
+from private_fixtures import require_private_files
+
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 TARGET = ROOT / "flyos" / "target" / "fr245_1370_neural_specimen_n64_controls"
 EMULATOR = ROOT / "tools" / "garmin-firmware" / "emulate_neural_specimen_n64_controls.py"
@@ -41,6 +43,9 @@ def glyph(character):
 class NeuralSpecimenN64ControlsTargetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_private_files(RUNTIME,
+            ROOT / "artifacts/analysis/fr245-1370-n64-allocation.json",
+            ROOT / "artifacts/firmware/analysis/Forerunner245_1370_GUPDATE/stream_01_fw_all_bin.bin")
         cls.sandbox = tempfile.TemporaryDirectory(prefix="flyos-n64-controls-focused-")
         cls.build = pathlib.Path(cls.sandbox.name) / "build"
         completed = subprocess.run(
