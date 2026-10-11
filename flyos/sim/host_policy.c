@@ -80,6 +80,25 @@ void fly_sim_redraw_usb(FlySimRedraw *redraw, bool attached) {
     redraw->exhausted = redraw->budget == 0u;
 }
 
+bool fly_sim_redraw_button(FlySimRedraw *redraw, FlySimRoute owner) {
+    if (redraw == NULL || owner != FLY_SIM_ROUTE_FLYOS || redraw->attached ||
+        redraw->epoch_exhausted || redraw->budget > FLY_SIM_REDRAW_MAX_ATTEMPTS) {
+        return false;
+    }
+    if (redraw->epoch == UINT64_MAX) {
+        redraw->epoch_exhausted = true;
+        return false;
+    }
+    if (!redraw->pending) {
+        redraw->attempts = 0u;
+        redraw->exhausted = redraw->budget == 0u;
+    }
+    ++redraw->epoch;
+    redraw->last_enqueued_attempt = 0u;
+    redraw->pending = true;
+    return true;
+}
+
 FlySimRedrawSubmission fly_sim_redraw_step(
     FlySimRedraw *redraw, const FlySimRedrawContext *context, bool queue_accepts) {
     FlySimRedrawSubmission result = {0};

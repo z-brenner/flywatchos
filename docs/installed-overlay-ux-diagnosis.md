@@ -1,6 +1,7 @@
-# Installed 13.76 overlay: button escape and stale USB view
+# Documented 13.76 overlay: button escape and stale USB view
 
-The last user-observed installed build is synthetic 13.76. Its exact candidate
+The historical user-observed installed build is synthetic 13.76. The present
+installation has not been established again. Its documented candidate
 SHA-256 is `9dc61b99cebacc50f121b9145ddfab21445344fac6f70a4ab68dde205fcf84de`.
 The watch has not provided an internal-flash readback. This diagnosis combines
 the byte-pinned source and offline control-flow evidence with the user's live
@@ -12,15 +13,17 @@ reports; it does not claim a live event trace.
 `flyos/target/fr245_1370_neural_specimen_n64_controls/overlay.c` handles only
 key indices 1, 3, and 4: START, DOWN, and UP. LIGHT (index 0) and BACK (index
 2) always call `flyos_key_pass`. The three handled keys also pass to Garmin
-when USB mass-storage cache is 3/4, the input-ready GPIO guard is false, or
+when USB mass-storage cache is 3/4, the physical BACK button is held, or
 the bounded HOME check fails. The BACK chord intentionally routes a system
 session to Garmin. Therefore entering Garmin menus with some buttons is
-expected from the installed code, not evidence that the key hook failed.
+expected from the documented source, not evidence that the key hook failed.
 
-Capturing all five buttons requires one stable owner for every press, hold,
-repeat, and release while native update, recovery, notification, and other
-views retain their controls. A per-event HOME check alone can split a sequence
-when a view changes between press and release. The proposed five key-record
+The documented source already latches ownership for START/DOWN/UP at the
+initial press and consumes later phases of that owned sequence. A release
+retains a one-render pulse only if HOME still qualifies. LIGHT/BACK remain
+native; this is not a five-key capture policy or a hardware lifetime proof.
+Any future broader policy must keep native update, recovery, notification,
+and other views usable. The proposed five key-record
 halfwords are not yet approved storage: startup zeroes them, and a computed
 external-XIP bulk writer has an unresolved pointer range. The completed
 classifier solves only the view-decision part of this problem. See
@@ -29,7 +32,7 @@ classifier solves only the view-decision part of this problem. See
 ## The stale charging image is not drawn by the FlyOS renderer
 
 The display hook samples byte `0x1FFC6F25` and passes `true` to `n64_render`
-when it equals 3 or 4, but the exact installed renderer explicitly discards
+when it equals 3 or 4, but the documented 13.76 renderer explicitly discards
 that argument and has no charging graphic. On a stable HOME call it clears all
 57,600 framebuffer bytes before drawing the FlyOS face. Therefore the user's
 stale charging image cannot be attributed to a FlyOS-drawn charging label.
@@ -75,3 +78,8 @@ transfer issue. Its offline 13.78/13.79 pair remains quarantined and live use
 is **NO-GO**. A safe alternative must either use a proven read-only native
 telemetry path or close exclusive volatile-storage and redraw-context proofs
 before proposing a new on-watch diagnostic.
+
+See [watch redraw readiness](watch-redraw-readiness.md) for a short ordinary-use
+observation checklist and executable public fault traces. A delayed released-key
+footer can support accepted input, but cannot distinguish queue rejection from
+other presentation delays. The proposed host retry controller is not installed.

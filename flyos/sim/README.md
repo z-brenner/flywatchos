@@ -37,12 +37,25 @@ contract and would discard ownership.
 
 ## Redraw contract
 
-An observed physical attached-to-detached edge creates one increasing epoch
-with pending work. Merely starting the simulation detached invents no edge.
+An observed physical attached-to-detached edge creates one increasing generation
+(`epoch` in the API) with pending work. Merely starting the simulation detached invents no edge.
 Repeated observations of detached state do not reset the retry budget.
 Reattachment cancels pending work and invalidates all outstanding tokens.
 A new detach receives a fresh epoch and budget. Epoch overflow fails closed
 without token reuse.
+
+`fly_sim_redraw_button` adds explicitly FlyOS-owned dirty work while detached.
+Native/rejected routes and requests while attached do nothing. Each accepted
+button request increments the generation and invalidates all older display
+tokens: displaying an older state cannot acknowledge newer input. Button
+changes coalesce into the existing pending work interval without resetting
+its attempts, exhaustion, or retry-opportunity requirement. After an actual
+modeled display completes the interval, a new button request gets a fresh
+budget. An exhausted interval remains pending even under more button input;
+only completion or an independent USB lifecycle transition starts a new budget.
+This bounds queue pressure but deliberately does not guarantee eventual redraw.
+Generation overflow stops submissions/acknowledgments instead of reusing tokens.
+This button API is a proposed host policy, not the documented target behavior.
 
 `fly_sim_redraw_step` returns at most one abstract submission per invocation.
 It requires all of the following:
@@ -105,6 +118,14 @@ queue-versus-display semantics, stale acknowledgments, and epoch overflow.
 The assertions are about this host specification only. Target storage,
 atomicity, task concurrency, native callback safety, queue semantics, detach
 convergence, and actual display visibility remain unproved here.
+
+`flyos-button-redraw-tests` additionally checks queue rejection after owned
+input, native routing, newer-input/stale-display races, USB cancellation,
+native/unsafe callback guards, overflow, and 18,000 burst events across every
+supported retry budget with both queue outcomes. `flyos-redraw-fault-trace`
+exports six deterministic JSON scenarios using this same controller. Read the
+[watch-readiness guide](../../docs/watch-redraw-readiness.md) for reproduction
+and the distinction between source facts, synthetic faults, and observations.
 
 ## Replay exporter and one-shot pulses
 

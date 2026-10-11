@@ -43,7 +43,7 @@ FlyWatch is an attempt to turn a Garmin Forerunner 245 into a strange little
 scientific instrument—part watch face, part neural observatory, part persistent
 artificial organism.
 
-The watch currently runs **Specimen 64**, a deterministic 64-neuron network with
+The last reported watch experiment ran **Specimen 64**, a deterministic 64-neuron network with
 sparse weighted connections. Every simulated neuron maps directly to a cell in
 the display. The colors and pulses are state, not decorative random noise.
 
@@ -114,16 +114,23 @@ See the [installed-overlay diagnosis](docs/installed-overlay-ux-diagnosis.md).
 | Top-right | `START>BURST` | Inject a strong neural burst | Captured on FlyOS; native on system/update views |
 | Bottom-right | `BACK>SYSTEM` | System escape | Always passes to GarminOS |
 
-Complete press-sequence ownership and a safe nonblocking redraw callback are
-still unresolved on the target. A per-event HOME check can split a sequence
-when a view changes. The user also observed a return to FlyOS more than ten
-seconds after USB removal. The quarantined 13.80 experiment does not fix that
+The documented source already latches START/DOWN/UP ownership at press;
+LIGHT/BACK stay native. Exclusive storage, complete sequence behavior on the
+watch, and a safe redraw retry callback remain unproved. The user also observed
+a return to FlyOS more than ten seconds after USB removal. The quarantined 13.80 experiment does not fix that
 delay and weakens LIGHT handling; its [live-use decision remains NO-GO](docs/fivekey-1380-offline-candidate.md).
 
 The new host-only interaction lab makes the intended conservative policy
 executable: one owner for each complete sequence, native LIGHT/BACK, and
 bounded redraw attempts that remain pending until acknowledged. These tests
 do not establish target RAM ownership, callback safety, or device timing.
+
+The [watch-readiness fault guide](docs/watch-redraw-readiness.md) now separates
+initial key pass-through, queue rejection, accepted-but-undisplayed requests,
+and actual visible recovery. It includes six executable host fault traces,
+bounded button-redraw regression tests, and an ordinary-use observation
+checklist. These test a proposed controller; they do not change the installed
+watch or fix its USB-return delay.
 
 ## Signal path
 

@@ -11,9 +11,16 @@ ctest --test-dir flyos/build --output-on-failure
 The host suite now includes the original model/renderer/persistence tests,
 input/redraw policy, bounded synthetic view classification, live bridge,
 standalone bundle checks, fail-closed WebAssembly-builder checks, CX60 dynamics
-and pinned topology/anatomy provenance checks (19 CTest targets). Some
+and pinned topology/anatomy provenance checks (21 CTest targets). Some
 fake-executable build-failure tests require POSIX/Node and report explicit skips
 when unavailable. No test here supplies proprietary firmware or accesses a watch.
+
+The button-redraw tests exercise the proposed host controller under rejection,
+newer-input/stale-display races, 18,000 burst events, USB/native suppression,
+retry exhaustion and generation overflow. Six JSON fault scenarios run the
+same C implementation and have independent report assertions. See the
+[watch-readiness guide](../../docs/watch-redraw-readiness.md). Passing these
+checks does not mean a fix was installed or that a safe target retry exists.
 
 ## Real C to WebAssembly
 

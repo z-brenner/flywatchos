@@ -104,6 +104,15 @@ bool fly_sim_redraw_init(FlySimRedraw *redraw, bool attached, unsigned budget);
 /* Each attached -> detached edge starts one epoch; reattach cancels it. */
 void fly_sim_redraw_usb(FlySimRedraw *redraw, bool attached);
 /*
+ * Marks a FlyOS-owned button change dirty while detached. Native/rejected
+ * routes do nothing. Each accepted change invalidates older display tokens.
+ * Changes coalesce into one pending work interval: they never replenish its
+ * attempt budget or bypass retry_due. Only completion or a USB lifecycle edge
+ * can start a fresh budget. This is a host proposal, not installed behavior.
+ * Caller must supply the actual latched route, not raw physical button bits.
+ */
+bool fly_sim_redraw_button(FlySimRedraw *redraw, FlySimRoute owner);
+/*
  * Emits at most one abstract NONBLOCKING submission on an eligible callback.
  * queue_accepts is a scenario result, not an actual queue operation. Native
  * modals/invalid views and unsafe contexts preserve pending without spending

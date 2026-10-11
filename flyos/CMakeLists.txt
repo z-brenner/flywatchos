@@ -103,6 +103,18 @@ target_link_libraries(flyos-host-policy-tests PRIVATE flyos_sim_policy)
 flyos_strict_warnings(flyos-host-policy-tests)
 add_test(NAME flyos-host-policy-tests COMMAND flyos-host-policy-tests)
 
+add_executable(flyos-button-redraw-tests tests/test_button_redraw.c)
+target_link_libraries(flyos-button-redraw-tests PRIVATE flyos_sim_policy)
+flyos_strict_warnings(flyos-button-redraw-tests)
+add_test(NAME flyos-button-redraw-tests COMMAND flyos-button-redraw-tests)
+
+add_executable(flyos-redraw-fault-trace sim/redraw_fault_trace.c)
+target_link_libraries(flyos-redraw-fault-trace PRIVATE flyos_sim_policy)
+flyos_strict_warnings(flyos-redraw-fault-trace)
+add_test(NAME flyos-redraw-fault-trace-tests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_redraw_fault_trace.py
+        $<TARGET_FILE:flyos-redraw-fault-trace>)
+
 add_executable(flyos-interaction-exporter
     sim/export_interaction_trace.c display/neural_specimen.c fly/brain64.c)
 target_compile_definitions(flyos-interaction-exporter PRIVATE FLY_NEURAL_SPECIMEN_HOST_PREVIEW=1)
